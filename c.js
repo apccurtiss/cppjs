@@ -21,6 +21,8 @@ var Token = function(type, string) {
 var symbols = [
   new Symbol("OParen", /^\(/),
   new Symbol("CParen", /^\)/),
+  new Symbol("OBrace", /^{/),
+  new Symbol("CBrace", /^}/),
   new Symbol("Plus", /^\+/),
   new Symbol("Minus", /^\-/),
   new Symbol("Mul", /^\*/),
@@ -41,12 +43,12 @@ var symbols = [
   new Symbol("Whitespace", /^\s+/),
 ]
 
-var reserved = ["int"];
+var types = ["int"];
 function check_reserved(token) {
   if(token.type == "Ident") {
-    for(var i = 0; i < reserved.length; i++) {
-      if(token.string == reserved[i]) {
-        token.type = "Reserved";
+    for(var i = 0; i < types.length; i++) {
+      if(token.string == types[i]) {
+        token.type = "Type";
         break;
       }
     }
@@ -81,11 +83,11 @@ function tokenize(code) {
 /*
  *  Parser
  */
-FuncDecl = function(name, type, params, body) {
+Function = function(name, type, params, value) {
   this.name = name;
   this.type = type;
   this.params = params;
-  this.body = body;
+  this.value = value;
 }
 
 Param = function(type, name) {
@@ -93,7 +95,7 @@ Param = function(type, name) {
   this.name = name;
 }
 
-Decl = function(name, type, value) {
+Var = function(name, type, value) {
   this.name = name;
   this.type = type;
   this.value = value;
@@ -116,7 +118,7 @@ Const = function(type, value) {
 }
 
 // TODO(alex) use generator instead of array of tokens?
-function treeify(tokens) {
+function parse(tokens) {
   function expect(type) {
     if(!tokens.length) {
       throw "Unexpected end of file";
@@ -192,18 +194,8 @@ function treeify(tokens) {
       return p;
     }
     else {
-      throw "Unexpected token: " + tokens[0].type + " (" + tokens[0].string + ")";
+      throw "Unexpected token of type \"" + tokens[0].type + "\" (\"" + tokens[0].string + "\")";
     }
-  }
-
-  var types = {
-    "int": 4,
-    "float": 4,
-    "char": 1,
-  };
-  is_type = function(tok) {
-    var size = types[tok.string];
-    return size != undefined ? true : false;
   }
 
   function parse_params() {
@@ -213,8 +205,7 @@ function treeify(tokens) {
     require("OParen");
     if(!pop("CParen")) {
       while(1) {
-        var typ = require("Reserved");
-        if(!is_type(typ)) throw "Type specifier required";
+        var typ = require("Type");
         var name = require("Ident");
         params.push(new Param(typ.string, name.string));
         if(!pop("Comma")) break;
@@ -224,34 +215,47 @@ function treeify(tokens) {
     return params;
   }
 
-  function parse_body() {
-    throw "Function bodies unimplemented";
+  function parse_function_body() {
+    var body = [];
+    require("OBrace");
+    while(!pop("CBrace")) {
+      // TODO(alex) allow for variable declarations
+      body.push(parse_expr());
+      require("Semi");
+    }
+    return body;
   }
 
-  // declaration
-  var tok;
-  if(tok = pop("Reserved")) {
-    if(is_type(tok)) {
-      var name = require("Ident").string;
-      var typ = tok.string;
-      if(peek("OParen")) {
-        var params = parse_params();
-        var body = pop("Semi") ? undefined : parse_body();
-        return new FuncDecl(name, typ, params, body);
-      }
-      else {
-        require("Assign");
-        var val = parse_expr();
-        return new Decl(name, typ, val);
-      }
+  function is_declared(name) {
+    var n;
+    return (n = globals[name]) && n.value;
+  }
+
+  // program body can only be function or variable declarations
+  var globals = [];
+  while(tokens.length) {
+    var tok = require("Type");
+    var name = require("Ident").string;
+    if(is_declared(name)) {
+      throw "Redeclaration of " + name;
     }
+    var typ = tok.string;
+
+    // function declaration
+    if(peek("OParen")) {
+      var params = parse_params();
+      var body = pop("Semi") ? undefined : parse_function_body();
+      globals.push(new Function(name, typ, params, body));
+    }
+    // variable declaration
     else {
-      throw "Unimplemented";
+      require("Assign");
+      var val = parse_expr();
+      require("Semi");
+      globals.push(new Var(name, typ, val));
     }
   }
-  else {
-    return parse_expr(tokens);
-  }
+  return globals;
 }
 
 /*
@@ -323,12 +327,12 @@ var memory = {
   heap: [],
 }
 
-function parse(code) {
+function interperate(code) {
   var pp = preprocess(code);
   var tokens = tokenize(code);
-  console.log("Tokens:")
+  console.log("Tokens:");
   console.log(tokens);
-  var ast = treeify(tokens);
+  var ast = parse(tokens);
   console.log("AST:")
   console.log(ast);
   typecheck(ast, memory);
@@ -336,6 +340,6 @@ function parse(code) {
   run(ast, memory);
 }
 
-code = "int x = 1 + 4 / 6;"
+code = "int x = 5; int y = 6; int foo(); int main() { 5; 6 + 7; }"
 
-parse(code);
+interperate(code);
