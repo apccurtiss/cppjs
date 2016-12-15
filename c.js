@@ -8,15 +8,8 @@ function preprocess(code) {
 /*
  *  Tokeniser
  */
-var Symbol = function(type, pattern) {
-  this.type = type;
-  this.pattern = pattern;
-}
-
-var Token = function(type, string) {
-  this.type = type;
-  this.string = string;
-}
+var Symbol = function(type, pattern) { this.type = type; this.pattern = pattern; }
+var Token = function(type, string) { this.type = type; this.string = string; }
 
 var symbols = [
   new Symbol("OParen", /^\(/),
@@ -83,56 +76,38 @@ function tokenize(code) {
 /*
  *  Parser
  */
-Function = function(name, type, params, value) {
-  this.name = name;
-  this.type = type;
-  this.params = params;
-  this.value = value;
-}
-
-Param = function(type, name) {
-  this.type = type;
-  this.name = name;
-}
-
-Var = function(name, type, value) {
-  this.name = name;
-  this.type = type;
-  this.value = value;
-}
-
-Bop = function(bop, e1, e2) {
-  this.bop = bop;
-  this.e1 = e1;
-  this.e2 = e2;
-}
-
-Uop = function(uop, e1) {
-  this.uop = uop;
-  this.e1 = e1;
-}
-
-Const = function(type, value) {
-  this.type = type;
-  this.value = value;
-}
+FunctionDecl = function(name, type, params, value) { this.name = name; this.type = type; this.params = params; this.value = value; }
+Param = function(type, name) { this.type = type; this.name = name; }
+VarDecl = function(name, type, value) { this.name = name; this.type = type; this.value = value; }
+Var = function(name) { this.name = name; }
+Call = function(name, args) { this.name = name; this.args = args; }
+Const = function(type, value) { this.type = type; this.value = value; }
+Function = function(type, params, value) { this.type = type; this.params = params; this.value = value; }
+Bop = function(bop, e1, e2) { this.bop = bop; this.e1 = e1; this.e2 = e2; }
+Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; }
+// TODO(alex) replace with more generic 'fd' type
+Print = function(text) { this.text = text; }
 
 // TODO(alex) use generator instead of array of tokens?
 function parse(tokens) {
   function expect(type) {
     if(!tokens.length) {
+      console.trace();
       throw "Unexpected end of file";
     }
     if(type != tokens[0].type) {
-      throw "Expected " + type + " but got " + tokens[0].type;
+      console.trace();
+      throw `Expected type '${type}' but got '${tokens[0].type}' (${tokens[0].string})`;
     }
   }
+
   function require(type) {
     expect(type);
     token = tokens[0];
     tokens = tokens.slice(1);
     return token;
   }
+
   function pop(type) {
     try {
       return require(type)
@@ -141,17 +116,15 @@ function parse(tokens) {
       return false;
     }
   }
+
   function peek(type) {
-    if(tokens.length && tokens[0].type == type) {
-      return tokens[0];
-    }
-    else {
-      return false;
-    }
+    return (tokens.length && (tokens[0].type == type)) ? tokens[0] : false;
   }
+
   function parse_expr() {
     return plus();
   }
+
   function plus() {
     function plusses(acc) {
       if(pop("Plus")) {
@@ -166,6 +139,7 @@ function parse(tokens) {
     }
     return plusses(mult());
   }
+
   function mult() {
     function mults(acc) {
       if(pop("Mul")) {
@@ -183,39 +157,46 @@ function parse(tokens) {
     }
     return mults(atom());
   }
+
   function atom() {
     var a;
     if(a = pop("Int")) {
       return new Const("Int", parseInt(a.string));
     }
+    else if(a = pop("Ident")) {
+      // Function
+      if(peek("OParen")) {
+        var pl = parse_list("OParen", "CParen", "Comma", parse_expr);
+        return new Call(a.string, pl);
+      }
+      // Variable
+      else {
+        return new Var(a.string);
+      }
+    }
     else if(pop("OParen")) {
-      var p = plus();
+      var p = parse_expr();
       require("CParen");
       return p;
     }
     else {
-      throw "Unexpected token of type \"" + tokens[0].type + "\" (\"" + tokens[0].string + "\")";
+      throw `Unexpected token of type '${tokens[0].type}' ('${tokens[0].string}')`;
     }
   }
 
-  function parse_params() {
-    var params = [];
-    var param;
-    // TODO(alex) refactor to make a bit nicer?
-    require("OParen");
-    if(!pop("CParen")) {
-      while(1) {
-        var typ = require("Type");
-        var name = require("Ident");
-        params.push(new Param(typ.string, name.string));
-        if(!pop("Comma")) break;
-      }
-      require("CParen");
+  function parse_list(start, end, delim, get_element) {
+    var list = [];
+    require(start);
+    if(!pop(end)) {
+      do {
+        list.push(get_element());
+      } while(pop(delim));
+      require(end);
     }
-    return params;
+    return list;
   }
 
-  function parse_function_body() {
+  function get_function_body() {
     var body = [];
     require("OBrace");
     while(!pop("CBrace")) {
@@ -234,6 +215,7 @@ function parse(tokens) {
   // program body can only be function or variable declarations
   var globals = [];
   while(tokens.length) {
+    if(pop("Semi")) continue;
     var tok = require("Type");
     var name = require("Ident").string;
     if(is_declared(name)) {
@@ -243,16 +225,16 @@ function parse(tokens) {
 
     // function declaration
     if(peek("OParen")) {
-      var params = parse_params();
-      var body = pop("Semi") ? undefined : parse_function_body();
-      globals.push(new Function(name, typ, params, body));
+      var params = parse_list("OParen", "CParen", "Comma", () => new Param(require("Type").string, require("Ident").string));
+      var body = pop("Semi") ? undefined : get_function_body();
+      globals.push(new FunctionDecl(name, typ, params, body));
     }
     // variable declaration
     else {
       require("Assign");
       var val = parse_expr();
       require("Semi");
-      globals.push(new Var(name, typ, val));
+      globals.push(new VarDecl(name, val.type, val.value));
     }
   }
   return globals;
@@ -265,6 +247,10 @@ function typecheck(ast, memory) {
   return true;
 }
 
+
+/*
+ *  Evaluation
+ */
 function is_value(ast) {
   if(ast instanceof Const) {
     return true;
@@ -274,30 +260,38 @@ function is_value(ast) {
   }
 }
 
-/*
- *  Evaluation
- */
-function step(ast) {
-  if(ast instanceof Bop) {
-    if(!is_value(ast.e1)) {
-      return new Bop(ast.bop, step(ast.e1), ast.e2);
+function eval(ast, memory) {
+  if(is_value(ast)) {
+    return ast;
+  }
+  else if(ast instanceof Var) {
+    value = memory[ast.name];
+    return value;
+  }
+  else if(ast instanceof Call) {
+    var f = memory[ast.name];
+    for(var i = 0; i < ast.args.length; i++) {
+      // console.log("Setting", f.params[i].name, "to be", eval(ast.args[i], memory), "using", ast.args[i]);
+      memory[f.params[i].name] = eval(ast.args[i], memory);
     }
-    else if(!is_value(ast.e2)) {
-      return new Bop(ast.bop, ast.e1, step(ast.e2));
+    return call(f, memory);
+  }
+  else if(ast instanceof Print) {
+    console.log(eval(ast.text, memory).value);
+    return undefined;
+  }
+  else if(ast instanceof Bop) {
+    if(ast.bop == "Plus") {
+      return new Const("int", eval(ast.e1, memory).value + eval(ast.e2, memory).value);
     }
-    else {
-      if(ast.bop == "Plus") {
-        return new Const("int", ast.e1.value + ast.e2.value);
-      }
-      if(ast.bop == "Minus") {
-        return new Const("int", ast.e1.value - ast.e2.value);
-      }
-      if(ast.bop == "Mul") {
-        return new Const("int", ast.e1.value * ast.e2.value);
-      }
-      if(ast.bop == "Div") {
-        return new Const("int", ast.e1.value / ast.e2.value);
-      }
+    if(ast.bop == "Minus") {
+      return new Const("int", eval(ast.e1, memory).value - eval(ast.e2, memory).value);
+    }
+    if(ast.bop == "Mul") {
+      return new Const("int", eval(ast.e1, memory).value * eval(ast.e2, memory).value);
+    }
+    if(ast.bop == "Div") {
+      return new Const("int", eval(ast.e1, memory).value / eval(ast.e2, memory).value);
     }
   }
   else {
@@ -305,41 +299,63 @@ function step(ast) {
   }
 }
 
-function run(ast, memory) {
-  var states = [ast];
-  var line = 0;
-  while(!is_value(states[line])) {
-    states[line + 1] = step(states[line]);
-    line++;
+function call(ast, memory) {
+  var lines = ast.value;
+  for(var i = 0; i < lines.length; i++) {
+    eval(lines[i], memory);
   }
-
-  console.log(states[line]);
 }
 
-var memory = {
-  // code
-  print: (arg) => { console.log(arg[0].value) },
-  // globals
-  globals: {},
-  // stack
-  stack: [],
-  // heap
-  heap: [],
+function run(ast, memory) {
+  var Location = function(type, value) {
+    this.type = type;
+    this.value = value;
+  }
+  for(var i = 0; i < ast.length; i++) {
+    if(ast[i] instanceof FunctionDecl) {
+      memory[ast[i].name] = new Function(ast[i].type, ast[i].params, ast[i].value);
+    }
+    else if(ast[i] instanceof VarDecl) {
+      memory[ast[i].name] = new Location(ast[i].type, ast[i].value);
+    }
+  }
+  return call(memory["main"], memory);
 }
 
-function interperate(code) {
+function interpret(code) {
   var pp = preprocess(code);
+
   var tokens = tokenize(code);
   console.log("Tokens:");
   console.log(tokens);
+
   var ast = parse(tokens);
   console.log("AST:")
   console.log(ast);
-  typecheck(ast, memory);
-  console.log("Output:")
-  run(ast, memory);
+
+  var default_memory = {
+    puts: new Function("int", [new Param("int", "x")], [new Print(new Var("x"))]),
+  }
+  typecheck(ast, default_memory);
+
+  console.log("Output:");
+  var status_code = run(ast, default_memory);
+
+  console.log("Exited with code " + status_code);
 }
 
-code = "int x = 5; int y = 6; int foo(); int main() { 5; 6 + 7; }"
+code = `
+int x = 5;
+int y = 6;
+int foo(int x) {
+  puts(x);
+  puts(15);
+}
+int main() {
+  5 + x;
+  6 + 7;
+  foo(y);
+}
+`;
 
-interperate(code);
+interpret(code);
