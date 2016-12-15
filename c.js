@@ -13,9 +13,10 @@ var Symbol = function(type, pattern) {
   this.pattern = pattern;
 }
 
-var Token = function(type, string) {
+var Token = function(type, string, line) {
   this.type = type;
   this.string = string;
+  this.line = line;
 }
 
 var symbols = [
@@ -38,12 +39,12 @@ var symbols = [
   new Symbol("Ident", /^[-a-zA-Z_][-a-zA-Z0-9_]*/),
   // variables
   new Symbol("Int", /^[0-9]+/),
-  new Symbol("Double", /^[0-9]*\.[0-9]+/),
+  new Symbol("Double", /^[0-9]*\.[0-9]+((e|E)-?[0-9]+)?/),
   // whitespace
   new Symbol("Whitespace", /^\s+/),
 ]
 
-var types = ["int"];
+var types = ["int","float"];
 function check_reserved(token) {
   if(token.type == "Ident") {
     for(var i = 0; i < types.length; i++) {
@@ -60,7 +61,8 @@ function parse_token(code) {
   var m;
   for(var i = 0; i < symbols.length; i++) {
     if(m = code.match(symbols[i].pattern)) {
-      var tok = new Token(symbols[i].type, m[0]);
+      var curr_line = code.split('\n')[0];
+      var tok = new Token(symbols[i].type, m[0],curr_line);
       return check_reserved(tok);
     }
   }
@@ -127,7 +129,7 @@ function parse(tokens) {
       throw "Expected " + type + " but got " + tokens[0].type;
     }
   }
-  function require(type) {
+    function expect_pop(type) {
     expect(type);
     token = tokens[0];
     tokens = tokens.slice(1);
@@ -135,7 +137,7 @@ function parse(tokens) {
   }
   function pop(type) {
     try {
-      return require(type)
+      return expect_token(type)
     }
     catch(err) {
       return false;
@@ -190,11 +192,11 @@ function parse(tokens) {
     }
     else if(pop("OParen")) {
       var p = plus();
-      require("CParen");
+      expect_pop("CParen");
       return p;
     }
     else {
-      throw "Unexpected token of type \"" + tokens[0].type + "\" (\"" + tokens[0].string + "\")";
+      throw "Unexpected token of type \"" + tokens[0].type + "\" (\"" + tokens[0].string + "\") at \"" + tokens[0].line + "\"";
     }
   }
 
@@ -202,26 +204,26 @@ function parse(tokens) {
     var params = [];
     var param;
     // TODO(alex) refactor to make a bit nicer?
-    require("OParen");
+    expect_pop("OParen");
     if(!pop("CParen")) {
       while(1) {
-        var typ = require("Type");
-        var name = require("Ident");
+        var typ = expect_pop("Type");
+        var name = expect_pop("Ident");
         params.push(new Param(typ.string, name.string));
         if(!pop("Comma")) break;
       }
-      require("CParen");
+      expect_pop("CParen");
     }
     return params;
   }
 
   function parse_function_body() {
     var body = [];
-    require("OBrace");
+    expect_pop("OBrace");
     while(!pop("CBrace")) {
       // TODO(alex) allow for variable declarations
       body.push(parse_expr());
-      require("Semi");
+      expect_pop("Semi");
     }
     return body;
   }
@@ -234,8 +236,8 @@ function parse(tokens) {
   // program body can only be function or variable declarations
   var globals = [];
   while(tokens.length) {
-    var tok = require("Type");
-    var name = require("Ident").string;
+    var tok = expect_pop("Type");
+    var name = expect_pop("Ident").string;
     if(is_declared(name)) {
       throw "Redeclaration of " + name;
     }
@@ -249,9 +251,9 @@ function parse(tokens) {
     }
     // variable declaration
     else {
-      require("Assign");
+      expect_pop("Assign");
       var val = parse_expr();
-      require("Semi");
+      expect_pop("Semi");
       globals.push(new Var(name, typ, val));
     }
   }
@@ -327,7 +329,7 @@ var memory = {
   heap: [],
 }
 
-function interperate(code) {
+function interpret(code) {
   var pp = preprocess(code);
   var tokens = tokenize(code);
   console.log("Tokens:");
@@ -340,6 +342,6 @@ function interperate(code) {
   run(ast, memory);
 }
 
-code = "int x = 5; int y = 6; int foo(); int main() { 5; 6 + 7; }"
+code = "int x = 5; int y = 6 int foo(); int main() { 5; 6 + 7; }"
 
-interperate(code);
+interpret(code);
