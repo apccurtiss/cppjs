@@ -9,7 +9,7 @@ function preprocess(code) {
  *  Tokeniser
  */
 var Symbol = function(type, pattern) { this.type = type; this.pattern = pattern; }
-var Token = function(type, string) { this.type = type; this.string = string; }
+var Token = function(type, string, line) { this.type = type; this.string = string; this.line = line; }
 
 var symbols = [
   new Symbol("OParen", /^\(/),
@@ -31,12 +31,12 @@ var symbols = [
   new Symbol("Ident", /^[-a-zA-Z_][-a-zA-Z0-9_]*/),
   // variables
   new Symbol("Int", /^[0-9]+/),
-  new Symbol("Double", /^[0-9]*\.[0-9]+/),
+  new Symbol("Double", /^[0-9]*\.[0-9]+((e|E)-?[0-9]+)?/),
   // whitespace
   new Symbol("Whitespace", /^\s+/),
 ]
 
-var types = ["int"];
+var types = ["int","float"];
 function check_reserved(token) {
   if(token.type == "Ident") {
     for(var i = 0; i < types.length; i++) {
@@ -44,6 +44,9 @@ function check_reserved(token) {
         token.type = "Type";
         break;
       }
+    }
+    if(token.string == "return") {
+      token.type = "Return";
     }
   }
   return token;
@@ -53,7 +56,8 @@ function parse_token(code) {
   var m;
   for(var i = 0; i < symbols.length; i++) {
     if(m = code.match(symbols[i].pattern)) {
-      var tok = new Token(symbols[i].type, m[0]);
+      var curr_line = code.split('\n')[0];
+      var tok = new Token(symbols[i].type, m[0], curr_line);
       return check_reserved(tok);
     }
   }
@@ -101,7 +105,7 @@ function parse(tokens) {
     }
   }
 
-  function require(type) {
+  function expect_pop(type) {
     expect(type);
     token = tokens[0];
     tokens = tokens.slice(1);
@@ -110,7 +114,7 @@ function parse(tokens) {
 
   function pop(type) {
     try {
-      return require(type)
+      return expect_pop(type)
     }
     catch(err) {
       return false;
@@ -176,7 +180,7 @@ function parse(tokens) {
     }
     else if(pop("OParen")) {
       var p = parse_expr();
-      require("CParen");
+      expect_pop("CParen");
       return p;
     }
     else {
@@ -186,23 +190,23 @@ function parse(tokens) {
 
   function parse_list(start, end, delim, get_element) {
     var list = [];
-    require(start);
+    expect_pop(start);
     if(!pop(end)) {
       do {
         list.push(get_element());
       } while(pop(delim));
-      require(end);
+      expect_pop(end);
     }
     return list;
   }
 
   function get_function_body() {
     var body = [];
-    require("OBrace");
+    expect_pop("OBrace");
     while(!pop("CBrace")) {
       // TODO(alex) allow for variable declarations
       body.push(parse_expr());
-      require("Semi");
+      expect_pop("Semi");
     }
     return body;
   }
@@ -216,8 +220,8 @@ function parse(tokens) {
   var globals = [];
   while(tokens.length) {
     if(pop("Semi")) continue;
-    var tok = require("Type");
-    var name = require("Ident").string;
+    var tok = expect_pop("Type");
+    var name = expect_pop("Ident").string;
     if(is_declared(name)) {
       throw "Redeclaration of " + name;
     }
@@ -225,15 +229,15 @@ function parse(tokens) {
 
     // function declaration
     if(peek("OParen")) {
-      var params = parse_list("OParen", "CParen", "Comma", () => new Param(require("Type").string, require("Ident").string));
+      var params = parse_list("OParen", "CParen", "Comma", () => new Param(expect_pop("Type").string, expect_pop("Ident").string));
       var body = pop("Semi") ? undefined : get_function_body();
       globals.push(new FunctionDecl(name, typ, params, body));
     }
     // variable declaration
     else {
-      require("Assign");
+      expect_pop("Assign");
       var val = parse_expr();
-      require("Semi");
+      expect_pop("Semi");
       globals.push(new VarDecl(name, val.type, val.value));
     }
   }
@@ -306,7 +310,7 @@ function call(ast, memory) {
   }
 }
 
-function run(ast, memory) {
+function execute(ast, memory) {
   var Location = function(type, value) {
     this.type = type;
     this.value = value;
@@ -339,7 +343,7 @@ function interpret(code) {
   typecheck(ast, default_memory);
 
   console.log("Output:");
-  var status_code = run(ast, default_memory);
+  var status_code = execute(ast, default_memory);
 
   console.log("Exited with code " + status_code);
 }
@@ -354,7 +358,7 @@ int foo(int x) {
 int main() {
   5 + x;
   6 + 7;
-  foo(y);
+  foo(y + 7);
 }
 `;
 
