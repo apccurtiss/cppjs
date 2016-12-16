@@ -89,6 +89,7 @@ Const = function(type, value) { this.type = type; this.value = value; }
 Function = function(type, params, value) { this.type = type; this.params = params; this.value = value; }
 Bop = function(bop, e1, e2) { this.bop = bop; this.e1 = e1; this.e2 = e2; }
 Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; }
+Return = function(value) { this.value = value; }
 // TODO(alex) replace with more generic 'fd' type
 Print = function(text) { this.text = text; }
 
@@ -96,11 +97,11 @@ Print = function(text) { this.text = text; }
 function parse(tokens) {
   function expect(type) {
     if(!tokens.length) {
-      console.trace();
+      // console.trace();
       throw "Unexpected end of file";
     }
     if(type != tokens[0].type) {
-      console.trace();
+      // console.trace();
       throw `Expected type '${type}' but got '${tokens[0].type}' (${tokens[0].string})`;
     }
   }
@@ -205,7 +206,12 @@ function parse(tokens) {
     expect_pop("OBrace");
     while(!pop("CBrace")) {
       // TODO(alex) allow for variable declarations
-      body.push(parse_expr());
+      if(pop("Return")) {
+        body.push(new Return(parse_expr()));
+      }
+      else {
+        body.push(parse_expr());
+      }
       expect_pop("Semi");
     }
     return body;
@@ -255,7 +261,7 @@ function typecheck(ast, memory) {
 /*
  *  Evaluation
  */
-var Runtime = function(ast) {
+var Environment = function(ast) {
   // initialize
   var global_memory = {
     puts: new Function("void", [ new Param("int", "x") ], [ new Print(new Var("x"))])
@@ -308,6 +314,9 @@ var Runtime = function(ast) {
       console.log(eval(ast.text, stack_frame).value);
       return undefined;
     }
+    else if(ast instanceof Return) {
+      return eval(ast.value, stack_frame);
+    }
     else if(ast instanceof Bop) {
       if(ast.bop == "Plus") {
         return new Const("int", eval(ast.e1, stack_frame).value + eval(ast.e2, stack_frame).value);
@@ -323,7 +332,7 @@ var Runtime = function(ast) {
       }
     }
     else {
-
+      console.log(ast);
       throw "Unimplemented";
     }
   }
@@ -331,13 +340,19 @@ var Runtime = function(ast) {
   function call(ast, stack_frame) {
     var lines = ast.value;
     for(var i = 0; i < lines.length; i++) {
-      eval(lines[i], stack_frame);
+      var ret = eval(lines[i], stack_frame);
+      if(lines[i] instanceof Return) return ret;
     }
+    return undefined;
+  }
+
+  this.typecheck = function() {
+
   }
 
   this.run = function() {
     // TODO(alex) add argc/argv to main's stack frame?
-    call(global_memory  ["main"], {});
+    return call(global_memory  ["main"], {});
   }
 }
 
@@ -352,12 +367,11 @@ function interpret(code) {
   console.log("AST:")
   console.log(ast);
 
-  var runtime = new Runtime(ast);
-  // TODO(alex): implement runtime.typecheck();
+  var env = new Environment(ast);
+  env.typecheck();
 
   console.log("Output:");
-  var status_code = runtime.run();
-
+  var status_code = env.run().value;
   console.log("Exited with code " + status_code);
 }
 
@@ -366,12 +380,15 @@ int x = 5;
 int y = 6;
 int foo(int x) {
   puts(x);
-  puts(x);
+  puts(x + 5);
+  puts(x / 5);
+  return 7;
 }
 int main() {
   5 + x;
   6 + 7;
-  foo(y + 7);
+  puts(x + y - 14);
+  return foo(y + 7);
 }
 `;
 
