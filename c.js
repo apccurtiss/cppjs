@@ -255,75 +255,90 @@ function typecheck(ast, memory) {
 /*
  *  Evaluation
  */
-function is_value(ast) {
-  if(ast instanceof Const) {
-    return true;
-  }
-  else {
-    return false;
-  }
-}
-
-function eval(ast, memory) {
-  if(is_value(ast)) {
-    return ast;
-  }
-  else if(ast instanceof Var) {
-    value = memory[ast.name];
-    return value;
-  }
-  else if(ast instanceof Call) {
-    var f = memory[ast.name];
-    for(var i = 0; i < ast.args.length; i++) {
-      // console.log("Setting", f.params[i].name, "to be", eval(ast.args[i], memory), "using", ast.args[i]);
-      memory[f.params[i].name] = eval(ast.args[i], memory);
-    }
-    return call(f, memory);
-  }
-  else if(ast instanceof Print) {
-    console.log(eval(ast.text, memory).value);
-    return undefined;
-  }
-  else if(ast instanceof Bop) {
-    if(ast.bop == "Plus") {
-      return new Const("int", eval(ast.e1, memory).value + eval(ast.e2, memory).value);
-    }
-    if(ast.bop == "Minus") {
-      return new Const("int", eval(ast.e1, memory).value - eval(ast.e2, memory).value);
-    }
-    if(ast.bop == "Mul") {
-      return new Const("int", eval(ast.e1, memory).value * eval(ast.e2, memory).value);
-    }
-    if(ast.bop == "Div") {
-      return new Const("int", eval(ast.e1, memory).value / eval(ast.e2, memory).value);
-    }
-  }
-  else {
-    throw "Unimplemented";
-  }
-}
-
-function call(ast, memory) {
-  var lines = ast.value;
-  for(var i = 0; i < lines.length; i++) {
-    eval(lines[i], memory);
-  }
-}
-
-function execute(ast, memory) {
+var Runtime = function(ast) {
+  // initialize
+  var global_memory = {
+    puts: new Function("void", [ new Param("int", "x") ], [ new Print(new Var("x"))])
+  };
   var Location = function(type, value) {
     this.type = type;
     this.value = value;
   }
+
   for(var i = 0; i < ast.length; i++) {
     if(ast[i] instanceof FunctionDecl) {
-      memory[ast[i].name] = new Function(ast[i].type, ast[i].params, ast[i].value);
+      global_memory[ast[i].name] = new Function(ast[i].type, ast[i].params, ast[i].value);
     }
     else if(ast[i] instanceof VarDecl) {
-      memory[ast[i].name] = new Location(ast[i].type, ast[i].value);
+      global_memory[ast[i].name] = new Location(ast[i].type, ast[i].value);
     }
   }
-  return call(memory["main"], memory);
+
+  function is_value(ast) {
+    if(ast instanceof Const) {
+      return true;
+    }
+    else {
+      return false;
+    }
+  }
+
+  function eval(ast, stack_frame) {
+    function lookup(v) {
+      var sv = stack_frame[v];
+      return sv ? sv : global_memory[v];
+    }
+    if(is_value(ast)) {
+      return ast;
+    }
+    else if(ast instanceof Var) {
+      value = lookup(ast.name);
+      return value;
+    }
+    else if(ast instanceof Call) {
+      var f = lookup(ast.name);
+      var sf = {};
+      for(var i = 0; i < ast.args.length; i++) {
+        // console.log("Setting", f.params[i].name, "to be", eval(ast.args[i], memory), "using", ast.args[i]);
+        sf[f.params[i].name] = eval(ast.args[i], stack_frame);
+      }
+      return call(f, sf);
+    }
+    else if(ast instanceof Print) {
+      console.log(eval(ast.text, stack_frame).value);
+      return undefined;
+    }
+    else if(ast instanceof Bop) {
+      if(ast.bop == "Plus") {
+        return new Const("int", eval(ast.e1, stack_frame).value + eval(ast.e2, stack_frame).value);
+      }
+      if(ast.bop == "Minus") {
+        return new Const("int", eval(ast.e1, stack_frame).value - eval(ast.e2, stack_frame).value);
+      }
+      if(ast.bop == "Mul") {
+        return new Const("int", eval(ast.e1, stack_frame).value * eval(ast.e2, stack_frame).value);
+      }
+      if(ast.bop == "Div") {
+        return new Const("int", eval(ast.e1, stack_frame).value / eval(ast.e2, stack_frame).value);
+      }
+    }
+    else {
+
+      throw "Unimplemented";
+    }
+  }
+
+  function call(ast, stack_frame) {
+    var lines = ast.value;
+    for(var i = 0; i < lines.length; i++) {
+      eval(lines[i], stack_frame);
+    }
+  }
+
+  this.run = function() {
+    // TODO(alex) add argc/argv to main's stack frame?
+    call(global_memory  ["main"], {});
+  }
 }
 
 function interpret(code) {
@@ -337,13 +352,11 @@ function interpret(code) {
   console.log("AST:")
   console.log(ast);
 
-  var default_memory = {
-    puts: new Function("int", [new Param("int", "x")], [new Print(new Var("x"))]),
-  }
-  typecheck(ast, default_memory);
+  var runtime = new Runtime(ast);
+  // TODO(alex): implement runtime.typecheck();
 
   console.log("Output:");
-  var status_code = execute(ast, default_memory);
+  var status_code = runtime.run();
 
   console.log("Exited with code " + status_code);
 }
@@ -353,7 +366,7 @@ int x = 5;
 int y = 6;
 int foo(int x) {
   puts(x);
-  puts(15);
+  puts(x);
 }
 int main() {
   5 + x;
