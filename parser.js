@@ -2,10 +2,10 @@
 Scope = function(memory, body) { this.memory = memory; this.body = body; };
 FunctionDecl = function(name, type, params, value) { this.name = name; this.type = type; this.params = params; this.value = value; };
 Param = function(type, name) { this.type = type; this.name = name; };
-VarDecl = function(name, type, value) { this.name = name; this.type = type; this.value = value; };
+VarDecl = function(name, val) { this.name = name; this.val = val; };
 VarRef = function(name) { this.name = name; };
 Call = function(name, args) { this.name = name; this.args = args; };
-Const = function(type, value) { this.type = type; this.value = value; };
+Val = function(type, value) { this.type = type; this.value = value; };
 Bop = function(bop, e1, e2) { this.bop = bop; this.e1 = e1; this.e2 = e2; };
 Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; };
 Return = function(value) { this.value = value; };
@@ -51,46 +51,61 @@ module.exports = function(tokens) {
   }
 
   function parse_expr() {
-    return plus();
+    return level4();
   }
 
-  function plus() {
-    function plusses(acc) {
+  function level4() {
+    function helper(acc) {
       if(pop("Plus")) {
-        return plusses(new Bop("Plus", acc, mult()));
+        return helper(new Bop("Plus", acc, level3()));
       }
       else if(pop("Minus")) {
-        return plusses(new Bop("Minus", acc, mult()));
+        return helper(new Bop("Minus", acc, level3()));
       }
       else {
         return acc;
       }
     }
-    return plusses(mult());
+    return helper(level3());
   }
 
-  function mult() {
-    function mults(acc) {
-      if(pop("Mul")) {
-        return mults(new Bop("Mul", acc, atom()));
+  function level3() {
+    function helper(acc) {
+      if(pop("Star")) {
+        return helper(new Bop("Mul", acc, level2()));
       }
       else if(pop("Div")) {
-        return mults(new Bop("Div", acc, atom()));
+        return helper(new Bop("Div", acc, level2()));
       }
       else if(pop("Mod")) {
-        return mults(new Bop("Mod", acc, atom()));
+        return helper(new Bop("Mod", acc, level2()));
       }
       else {
         return acc;
       }
     }
-    return mults(atom());
+    return helper(level2());
+  }
+
+  function level2() {
+    function helper() {
+      if(pop("Star")) {
+        return new Uop("Deref", helper());
+      }
+      else if(pop("And")) {
+        return new Uop("Addr", helper());
+      }
+      else {
+        return atom();
+      }
+    }
+    return helper();
   }
 
   function atom() {
     var a;
     if(a = pop("Int")) {
-      return new Const("Int", parseInt(a.string));
+      return new Val("Int", parseInt(a.string));
     }
     else if(a = pop("Ident")) {
       // Function
@@ -174,7 +189,7 @@ module.exports = function(tokens) {
       need("Assign");
       var val = parse_expr();
       need("Semi");
-      globals.push(new VarDecl(name, val.type, val.value));
+      globals.push(new VarDecl(name, new Val(val.type, val.value)));
     }
   }
   return globals;

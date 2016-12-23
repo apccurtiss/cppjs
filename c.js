@@ -32,15 +32,22 @@ function interpret(code) {
   console.log("AST:")
   console.log(ast);
 
-  var env = new Runtime(ast);
-  env.typecheck();
+  var rt = new Runtime(ast);
+  rt.typecheck();
 
   console.log("Output:");
-  var status_code = env.run().value;
-  console.log("Exited with code " + status_code);
+  var status_code = rt.run();
+  if(!status_code || !status_code.value) {
+    console.log("Process ended normally");
+  }
+  else {
+    console.log("Process crashed with code: " + status_code.value);
+  }
+
 }
 
 code = `
+int x = 2;
 int x = 1;
 int y = 0;
 int foo(int x) {
