@@ -2,37 +2,49 @@ Val = function(type, value) { this.type = type; this.value = value; };
 Ref = function(type, loc) { this.type = type; this.loc = loc; }
 
 function Environment() {
-  var sp = 0;
   this.stack = [];
   this.global = {};
 
-  this.allocate = function(v) {
-    if(!(v instanceof Val)) throw "stuck error - allocating non-value (" + v + ")"
-    var loc = sp;
-    // TODO(alex) base stack size off type size
-    sp = sp + 1;
-    this.stack[loc] = v;
-    return new Ref(v.type, loc);
+  var sp = 1024;
+  this.memory = new ArrayBuffer(sp);
+  var int32 = new Int32Array(this.memory);
+  // TODO(alex) base stack size off type size
+  this.assign = function(ref, val) {
+    if(!(ref instanceof Ref)) throw `stuck error - assigning to non-referance (${ref})`
+    if(!(val instanceof Val)) throw `stuck error - assigning non-value (${val})`
+    var element_size = 4;
+    int32[ref.loc / element_size] = val.value;
+    return val.value;
   }
 
-  this.pop = function(v) {
-    if(!(v instanceof Val)) throw "stuck error - popping non-value (" + v + ")"
-    // TODO(alex) base stack size off type size
-    sp = sp - 1;
-    return sp;
+  this.push = function(val) {
+    if(!(val instanceof Val)) throw `stuck error - allocating non-value (${val})`
+    var element_size = 4;
+    // TODO(alex) come up with a cleaner way of doing this?
+    sp -= element_size;
+    // alignment
+    sp -= (sp % element_size);
+    int32[sp / element_size] = val.value;
+    return new Ref(val.type, sp);
+  }
+
+  this.get = function(ref) {
+    if(!(ref instanceof Ref)) throw `stuck error - getting non-referance (${ref})`
+    var element_size = 4;
+    return int32[ref.loc / element_size];
   }
 }
 
 function initialize_memory(ast) {
   var state = new Environment();
-  state.global["puts"] = new Function("void", [ new Param("int", "x") ], [ new Print(new VarRef("x"))]);
+  state.global["print"] = new Function("void", [ new Param("int", "x") ], [ new Print(new VarRef("x"))]);
 
   for(var i = 0; i < ast.length; i++) {
     if(ast[i] instanceof FunctionDecl) {
       state.global[ast[i].name] = new Function(ast[i].type, ast[i].params, ast[i].value);
     }
     else if(ast[i] instanceof VarDecl) {
-      state.global[ast[i].name] = state.allocate(ast[i].val);
+      state.global[ast[i].name] = state.push(ast[i].val);
     }
   }
 
@@ -42,23 +54,22 @@ function initialize_memory(ast) {
 Function = function(type, params, value) { this.type = type; this.params = params; this.value = value; };
 
 module.exports = function(ast) {
-  // initialize
+  // returns boolean
   function is_value(ast) {
-    if(ast instanceof Val) {
-      return true;
-    }
-    else {
-      return false;
-    }
+    return (ast instanceof Val);
   }
 
   var memory = initialize_memory(ast);
 
+  // returns varied expression classes
   function eval(ast, stack_frame) {
-    function mem_lookup(loc) {
-      return memory.stack[loc];
+    // console.log("AST:", ast);
+    // returns raw number
+    function mem_lookup(ref) {
+      return memory.get(ref);
     }
 
+    // returns instance of Ref
     function get_location(name) {
       var sv = stack_frame[name];
       return sv ? sv : memory.global[name];
@@ -69,8 +80,9 @@ module.exports = function(ast) {
     }
 
     else if(ast instanceof VarRef) {
-      value = mem_lookup(get_location(ast.name).loc);
-      return value;
+      var ref = get_location(ast.name);
+      var value = mem_lookup(ref);
+      return new Val(ref.type, value);
     }
 
     else if(ast instanceof Call) {
@@ -79,16 +91,10 @@ module.exports = function(ast) {
       for(var i = 0; i < ast.args.length; i++) {
         // console.log("Setting", f.params[i].name, "to be", eval(ast.args[i], memory), "using", ast.args[i]);
         var v = eval(ast.args[i], stack_frame);
-        frame[func.params[i].name] = memory.allocate(v);
+        frame[func.params[i].name] = memory.push(v);
       }
       // TODO(alex) close stack frame at end
-
       return call(func, frame);
-      for(var i = 0; i < ast.args.length; i++) {
-        // console.log("Setting", f.params[i].name, "to be", eval(ast.args[i], memory), "using", ast.args[i]);
-        var v = eval(ast.args[i], stack_frame);
-        frame[func.params[i].name] = memory.allocate(v);
-      }
     }
 
     else if(ast instanceof Print) {
@@ -113,19 +119,27 @@ module.exports = function(ast) {
       else if(ast.bop == "Div") {
         return new Val("int", eval(ast.e1, stack_frame).value / eval(ast.e2, stack_frame).value);
       }
+      else if(ast.bop == "Assign") {
+        // TODO(alex) support direct memory location assignments
+        var ref = get_location(ast.e1.name);
+        var val = eval(ast.e2, stack_frame);
+        return memory.assign(ref, val);
+      }
       else {
+        console.log(ast);
         throw "Unimplemented";
       }
     }
 
     else if(ast instanceof Uop) {
       if(ast.uop == "Deref") {
-        return mem_lookup(eval(ast.e1, stack_frame).value);
+        return mem_lookup(eval(ast.e1, stack_frame));
       }
       else if(ast.uop == "Addr") {
         return new Val("ptr", get_location(ast.e1.name).loc);
       }
       else {
+        console.log(ast);
         throw "Unimplemented";
       }
     }
