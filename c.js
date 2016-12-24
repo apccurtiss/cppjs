@@ -21,11 +21,12 @@ var Parse = require("./parser");
 var Runtime = require("./runtime");
 
 
-function interpret(code) {
+module.exports = function interpret(code) {
   console.log();
   var pp = preprocess(code);
 
   var tokens = Tokenize(pp);
+  //IZAAK: I'd love a way to do a quiet mode.
   // console.log("Tokens:");
   // console.log(tokens);
 
@@ -38,41 +39,12 @@ function interpret(code) {
 
   console.log("Output:");
   var status_code = rt.run();
+  //IZAAK: I don't like this, this is a convention, not a language feature?
   if(!status_code || !status_code.value) {
     console.log("Process ended normally");
   }
   else {
     console.log("Process crashed with code: " + status_code.value);
   }
+  return status_code.value;
 }
-
-var assign = `
-int x = 1;
-int main() {
-  x = 2;
-  print(x);
-}
-`;
-interpret(assign);
-
-var ref = `
-int x = 1;
-int main() {
-  print(&x);
-}
-`;
-interpret(ref);
-
-var functions = `
-int x = 2;
-int y = 0;
-int foo(int x) {
-  print(x + 7);
-  return x;
-}
-int main() {
-  print(2 * x);
-  return foo(y);
-}
-`;
-interpret(functions);
