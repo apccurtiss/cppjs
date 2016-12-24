@@ -1,8 +1,18 @@
 /*
  *  Preprocessor
  */
+
+// flag for verbosity
+verbose = false;
+
 function preprocess(code) {
   return code;
+}
+
+function print() {
+  if (verbose) {
+    console.log.apply(console,arguments);
+  }
 }
 
 /*
@@ -26,20 +36,16 @@ module.exports = function interpret(code, options) {
   var pp = preprocess(code);
 
   var tokens = Tokenize(pp);
-  //IZAAK: I'd love a way to do a quiet mode.
-  if(options["verbose"]) {
-    console.log("Tokens:");
-    console.log(tokens);
-  }
+  print("Tokens:");
+  print(tokens);
 
   var ast = Parse(tokens);
-  if(options["verbose"]) {
-    console.log("AST:")
-    console.log(ast);
-  }
+  print("AST:")
+  print(ast);
+  
   var rt = new Runtime(ast);
   rt.typecheck();
 
   var status_code = rt.run();
-  return status_code ? status_code.value : 0  ;
+  return status_code ? status_code.value : 0 ;
 }
