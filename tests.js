@@ -39,3 +39,34 @@ test('basic functions test', function(t) {
   t.equal(interpret(test1),3);
   t.equal(interpret(test2),15);
 });
+
+// Additional tests to be added
+/*
+var assign = `
+int x = 1;
+int main() {
+  x = 2;
+  print(x);
+}
+`;
+
+var ref = `
+int x = 2;
+int main() {
+  print(&x);
+}
+`;
+
+var functions = `
+int x = 2;
+int y = 0;
+int foo(int x) {
+  print(x + 7);
+  return x;
+}
+int main() {
+  print(2 * x);
+  return foo(y);
+}
+`;
+*/

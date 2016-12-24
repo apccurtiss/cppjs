@@ -51,7 +51,20 @@ module.exports = function(tokens) {
   }
 
   function parse_expr() {
-    return level4();
+    return level14();
+  }
+
+  // function names refer to levels of precedence, as in http://en.cppreference.com/w/c/language/operator_precedence
+  function level14() {
+    function helper(acc) {
+      if(pop("Assign")) {
+        return helper(new Bop("Assign", acc, level4()));
+      }
+      else {
+        return acc;
+      }
+    }
+    return helper(level4());
   }
 
   function level4() {
@@ -162,10 +175,6 @@ module.exports = function(tokens) {
     return new Scope({}, body);
   }
 
-  function is_declared(name) {
-    var n;
-    return (n = globals[name]) && n.value;
-  }
 
   // program body can only be function or variable declarations
   var globals = [];
@@ -173,9 +182,6 @@ module.exports = function(tokens) {
     if(pop("Semi")) continue;
     var tok = need("Type");
     var name = need("Ident").string;
-    if(is_declared(name)) {
-      throw "Redeclaration of " + name;
-    }
     var typ = tok.string;
 
     // function declaration

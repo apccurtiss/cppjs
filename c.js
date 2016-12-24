@@ -32,8 +32,9 @@ var Runtime = require("./runtime");
 
 
 module.exports = function interpret(code) {
+  console.log();
   var pp = preprocess(code);
-  
+
   var tokens = Tokenize(pp);
   //IZAAK: I'd love a way to do a quiet mode.
   print("Tokens:");
@@ -55,24 +56,5 @@ module.exports = function interpret(code) {
   else {
     print("Process crashed with code: " + status_code.value);
   }
-  
   return status_code.value;
 }
-
-/*
-code = `
-int x = 2;
-int x = 1;
-int y = 0;
-int foo(int x) {
-  puts(x);
-  return x;
-}
-int main() {
-  puts(2 * x);
-  return foo(y);
-}
-`;
-
-console.log(interpret(code));
-*/
