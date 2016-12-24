@@ -1,41 +1,41 @@
-var interpret = require("./c.js")
+var test = require('tape')
 
-test1 = `
-int x = 2;
-int x = 1;
-int y = 0;
-int foo(int x) {
-  puts(x);
-  return x;
-}
-int main() {
-  puts(2 * x);
-  return foo(y);
-}
-`
+var interpret = require('./c.js')
 
-ret = interpret(test1);
-if (ret != 0) {
-  console.log("test1 failed, returned " + ret + " instead of 0\n")
-} else {
-  console.log("test1 PASSED\n")
-}
-
-test2 = `
-int divide(x,y) {
-  int z = 0;
-  while ((z + 1) * y <= x) {
-    z += 1
+/* This test checks to make sure basic functions can exist and, when called, return correct values.
+ * * function scope
+ * * global variables
+ * * literal values
+ * * integer type
+ * * multiple functions
+ */
+test('basic functions test', function(t) {
+  // we're going to run two tests
+  t.plan(2);
+  
+  // create the source code for them
+  test1 = `
+  int x = 4;
+  int y = 3;
+  int foo(int x) {
+    return x;
   }
-  return z
-}
-
-int main() {
-  return divide(4,2);
-}
-`
-
-ret = interpret(test2);
-if (ret != 2) {
-  console.log("test1 failed, returned " + ret + " instead of 2")
-}
+  int main() {
+    return foo(y);
+  }`;
+  
+  test2 = `
+  int foo(int x, int y) {
+    return bar(x) + bar(y)
+  }
+  int bar(int x) {
+    return x + 7;
+  }
+  int main() {
+    return foo(0,1);
+  }`;
+  
+  //check to make sure they return the correct thing.
+  t.equal(interpret(test1),3);
+  t.equal(interpret(test2),15);
+});
