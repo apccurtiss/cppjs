@@ -1,63 +1,53 @@
 var interpret = require("./c.js")
+function test(action, options) {
+  return (code) => {
+    if(action) {
+      console.log(`Testing ${action}:`);
+    }
 
-test1 = `
-int x = 2;
-int y = 1;
-int z = 0;
-int foo(int x) {
-  print(x);
-  return x;
-}
-int main() {
-  print(2 * x);
-  return foo(z);
-}
-`
-
-ret = interpret(test1);
-if (ret != 0) {
-  console.log("test1 failed, returned " + ret + " instead of 0\n")
-} else {
-  console.log("test1 PASSED\n")
-}
-
-test2 = `
-int divide(x,y) {
-  int z = 0;
-  while ((z + 1) * y <= x) {
-    z += 1
+    try {
+      ret = interpret(code, options);
+      console.log(`Test passed and returned ${ret}`)
+    }
+    catch(err) {
+      if (err.name == "ParseError") {
+        console.log(`Parsing failed with message:`);
+        err.position ? console.log(`${err.message} on line ${err.position.lnum}:\n${err.position.line}\n${Array(err.position.index).join(" ")}^`) : console.log(err.message);
+      }
+      else if (err.name == "TokenError") {
+        console.log(`Tokenizing failed with message:`);
+        err.position ? console.log(`${err.message} on line ${err.position.lnum}:\n${err.position.line}\n${Array(err.position.index).join(" ")}^`) : console.log(err.message);
+      }
+      else if (err.name == "RuntimeError") {
+        console.log(`Program crashed with message:`);
+        console.log(err.message);
+      }
+      else {
+        console.log(`Test failed with internal Javascript error:`);
+        console.log(err);
+      }
+    }
+    console.log();
   }
-  return z
 }
 
-int main() {
-  return divide(4,2);
-}
-`
-
-ret = interpret(test2);
-if (ret != 2) {
-  console.log("test1 failed, returned " + ret + " instead of 2")
-}
-
-// Additional tests to be added
-/*
-var assign = `
-int x = 1;
+test("Variable assignment")(
+`int x = 1;
 int main() {
   x = 2;
   print(x);
 }
-`;
+`
+)
 
-var ref = `
+test("Variable references")(`
 int x = 2;
 int main() {
   print(&x);
 }
-`;
+`)
 
-var functions = `
+test("Functions")(`
 int x = 2;
 int y = 0;
 int foo(int x) {
@@ -68,5 +58,27 @@ int main() {
   print(2 * x);
   return foo(y);
 }
-`;
-*/
+`)
+
+test("Comparisons")(`
+int x = 5;
+int y = 10;
+
+int main() {
+  return (x <= y);
+}
+`)
+
+test("While loops")(`
+int divide(int x, int y) {
+  int z = 0;
+  while ((z + 1) * y <= x) {
+    z += 1
+  }
+  return z
+}
+
+int main() {
+  return divide(4,2);
+}
+`)

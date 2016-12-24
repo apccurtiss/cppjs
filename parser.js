@@ -14,9 +14,10 @@ While = function(cond, body) { this.cond = cond; this.body = body; };
 // TODO(alex) replace with more generic 'fd' type
 Print = function(text) { this.text = text; };
 
-function ParseError(message) {
+function ParseError(message, position) {
   this.name = 'ParseError';
   this.message = message || 'Parse error';
+  this.position = position;
   this.stack = (new Error()).stack;
 }
 ParseError.prototype = Object.create(Error.prototype);
@@ -45,7 +46,8 @@ module.exports = function(tokens) {
   function need(type, message) {
     var tok = pop(type);
     if(!tok) {
-      throw new ParseError(message || `Expected type '${type}' but got '${tokens[0].type}' (${tokens[0].string})`);
+      console.trace();
+      throw new ParseError(message || `Expected type '${type}' but got '${tokens[0].type}'`, tokens[0].position);
     }
     return tok;
   }
@@ -58,7 +60,20 @@ module.exports = function(tokens) {
   function level14() {
     function helper(acc) {
       if(pop("Assign")) {
-        return helper(new Bop("Assign", acc, level4()));
+        return helper(new Bop("Assign", acc, level6()));
+      }
+      else {
+        return acc;
+      }
+    }
+    return helper(level6());
+  }
+
+  function level6() {
+    function helper(acc) {
+      var cmp;
+      if(cmp = (pop("Eq") || pop("Neq") || pop("Lt") || pop("Gt") || pop("Le") || pop("Ge"))) {
+        return helper(new Bop(cmp.type, acc, level4()));
       }
       else {
         return acc;
@@ -137,7 +152,7 @@ module.exports = function(tokens) {
       return p;
     }
     else {
-      throw `Unexpected token of type '${tokens[0].type}' ('${tokens[0].string}')`;
+      throw new ParseError(`Unexpected token of type '${tokens[0].type}'`, tokens[0].position);
     }
   }
 

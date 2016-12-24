@@ -1,5 +1,20 @@
+function Position(lnum, line, index) {
+  this.lnum = lnum;
+  this.line = line;
+  this.index = index;
+}
+
+function TokenError(message, position) {
+  this.name = 'TokenError';
+  this.message = message || 'Token error';
+  this.position = position;
+  this.stack = (new Error()).stack;
+}
+TokenError.prototype = Object.create(Error.prototype);
+TokenError.prototype.constructor = TokenError;
+
 var Symbol = function(type, pattern) { this.type = type; this.pattern = pattern; }
-var Token = function(type, string, line) { this.type = type; this.string = string; this.line = line; }
+var Token = function(type, string, position) { this.type = type; this.string = string; this.position = position; }
 
 var symbols = [
   new Symbol("OParen", /^\(/),
@@ -16,6 +31,10 @@ var symbols = [
   new Symbol("Semi", /^;/),
   new Symbol("Eq", /^==/),
   new Symbol("Neq", /^!=/),
+  new Symbol("Le", /^<=/),
+  new Symbol("Ge", /^>=/),
+  new Symbol("Lt", /^</),
+  new Symbol("Gt", /^>/),
   new Symbol("Assign", /^=/),
   new Symbol("Not", /^!/),
   new Symbol("Comma", /^,/),
@@ -44,27 +63,32 @@ function check_reserved(token) {
   return token;
 }
 
-function parse_token(code) {
+function parse_token(code, position) {
   var m;
   for(var i = 0; i < symbols.length; i++) {
     if(m = code.match(symbols[i].pattern)) {
-      var curr_line = code.split('\n')[0];
-      var tok = new Token(symbols[i].type, m[0], curr_line);
+      var tok = new Token(symbols[i].type, m[0], position);
       return check_reserved(tok);
     }
   }
-  throw "Unknown token: " + code;
+  throw new TokenError("Unknown token", position);
 }
 
 module.exports = function(code) {
   var tokens = [];
-  do {
-    var token = parse_token(code);
-    if(token.type != "Whitespace") {
-      tokens.push(token);
-    }
-    code = code.substring(token.string.length);
-  } while (code.length);
+  var lines = code.split('\n');
+  for(var i = 0; i < lines.length; i++) {
+    if(!lines[i]) continue;
+    var position = 0;
+    var line = lines[i];
+    do {
+      var token = parse_token(line.substring(position), new Position(i+1, lines[i], position+1));
+      if(token.type != "Whitespace") {
+        tokens.push(token);
+      }
+      position += token.string.length;
+    } while (position < line.length);
+  }
 
   return tokens;
 }

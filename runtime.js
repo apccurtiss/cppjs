@@ -107,6 +107,8 @@ module.exports = function(ast) {
     }
 
     else if(ast instanceof Bop) {
+      // TODO(alex) simplify
+      // TODO(alex) allow for different types, and cast between them
       if(ast.bop == "Plus") {
         return new Val("int", eval(ast.e1, stack_frame).value + eval(ast.e2, stack_frame).value);
       }
@@ -118,6 +120,19 @@ module.exports = function(ast) {
       }
       else if(ast.bop == "Div") {
         return new Val("int", eval(ast.e1, stack_frame).value / eval(ast.e2, stack_frame).value);
+      }
+      // TODO(alex) make int casts less janky
+      else if(ast.bop == "Lt") {
+        return new Val("int", 0 + (eval(ast.e1, stack_frame).value < eval(ast.e2, stack_frame).value));
+      }
+      else if(ast.bop == "Gt") {
+        return new Val("int", 0 + (eval(ast.e1, stack_frame).value > eval(ast.e2, stack_frame).value));
+      }
+      else if(ast.bop == "Le") {
+        return new Val("int", 0 + (eval(ast.e1, stack_frame).value <= eval(ast.e2, stack_frame).value));
+      }
+      else if(ast.bop == "Ge") {
+        return new Val("int", 0 + (eval(ast.e1, stack_frame).value >= eval(ast.e2, stack_frame).value));
       }
       else if(ast.bop == "Assign") {
         // TODO(alex) support direct memory location assignments
