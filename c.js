@@ -3,7 +3,6 @@
  */
 
 // flag for verbosity
-verbose = false;
 
 function preprocess(code) {
   return code;
@@ -31,21 +30,16 @@ var Parse = require("./parser");
 var Runtime = require("./runtime");
 
 
-module.exports = function interpret(code, options) {
-  if(!options) options = {};
-  var pp = preprocess(code);
+module.exports = function Program(code) {
+  this.pp = preprocess(code);
 
-  var tokens = Tokenize(pp);
-  print("Tokens:");
-  print(tokens);
+  this.tokens = Tokenize(this.pp);
 
-  var ast = Parse(tokens);
-  print("AST:")
-  print(ast);
-  
-  var rt = new Runtime(ast);
+  this.ast = Parse(this.tokens);
+
+  var rt = new Runtime(this.ast);
   rt.typecheck();
 
   var status_code = rt.run();
-  return status_code ? status_code.value : 0 ;
+  this.status_code = status_code ? status_code.value : 0 ;
 }

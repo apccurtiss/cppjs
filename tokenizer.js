@@ -59,6 +59,9 @@ function check_reserved(token) {
     if(token.string == "return") {
       token.type = "Return";
     }
+    if(token.string == "while") {
+      token.type = "While";
+    }
   }
   return token;
 }

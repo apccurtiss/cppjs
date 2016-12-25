@@ -172,20 +172,34 @@ module.exports = function(tokens) {
     var body = [];
     need("OBrace");
     while(!pop("CBrace")) {
-      // TODO(alex) allow for variable declarations
+      var type;
       if(pop("Return")) {
         body.push(new Return(parse_expr()));
+        need("Semi");
+      }
+      else if(type = pop("Type")) {
+        var name = need("Ident").string;
+        need("Assign");
+        var val = parse_expr();
+        body.push(new VarDecl(name, val));
+        need("Semi");
       }
       else if(pop("If")) {
-        require("OParen");
+        need("OParen");
         var cond = parse_expr();
-        require("CParen");
-        var body = parse_scoped_section();
+        need("CParen");
+        var b = parse_scoped_section();
+      }
+      else if(pop("While")) {
+        need("OParen");
+        var cond = parse_expr();
+        need("CParen");
+        var b = parse_scoped_section();
       }
       else {
         body.push(parse_expr());
+        need("Semi");
       }
-      need("Semi");
     }
     return new Scope({}, body);
   }

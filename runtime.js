@@ -2,7 +2,6 @@ Val = function(type, value) { this.type = type; this.value = value; };
 Ref = function(type, loc) { this.type = type; this.loc = loc; }
 
 function Environment() {
-  this.stack = [];
   this.global = {};
 
   var sp = 1024;
@@ -142,7 +141,7 @@ module.exports = function(ast) {
       }
       else {
         console.log(ast);
-        throw "Unimplemented";
+        throw `Unimplemented`;
       }
     }
 
@@ -159,6 +158,11 @@ module.exports = function(ast) {
       }
     }
 
+    else if(ast instanceof VarDecl) {
+      stack_frame[ast.name] = memory.push(eval(ast.val, stack_frame));
+      return stack_frame;
+    }
+
     else {
       console.log(ast);
       throw "Unimplemented";
@@ -170,6 +174,7 @@ module.exports = function(ast) {
     for(var i = 0; i < lines.length; i++) {
       var ret = eval(lines[i], stack_frame);
       if(lines[i] instanceof Return) return ret;
+      if(lines[i] instanceof VarDecl) stack_frame = ret;
     }
     return undefined;
   }
