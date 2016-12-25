@@ -41,6 +41,7 @@ int main() {
 
 test("Variable references")(`
 int x = 2;
+int y = 4;
 int main() {
   print(&x);
 }
@@ -114,7 +115,7 @@ int main() {
 }
 `);
 
-
+//*/
 // var test = require('tape');
 //
 // var interpret = require('./c.js');
