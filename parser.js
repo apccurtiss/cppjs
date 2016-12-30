@@ -168,38 +168,44 @@ module.exports = function(tokens) {
     return list;
   }
 
+  function parse_logical_line() {
+    var type;
+    var ast;
+    if(pop("Return")) {
+      ast = new Return(parse_expr());
+      need("Semi");
+    }
+    else if(type = pop("Type")) {
+      var name = need("Ident").string;
+      need("Assign");
+      var val = parse_expr();
+      ast = new VarDecl(name, val);
+      need("Semi");
+    }
+    else if(pop("If")) {
+      need("OParen");
+      var cond = parse_expr();
+      need("CParen");
+      var b = parse_scoped_section();
+    }
+    else if(pop("While")) {
+      need("OParen");
+      var cond = parse_expr();
+      need("CParen");
+      var b = parse_scoped_section();
+    }
+    else {
+      ast = parse_expr();
+      need("Semi");
+    }
+    return ast;
+  }
+
   function parse_scoped_section() {
     var body = [];
     need("OBrace");
     while(!pop("CBrace")) {
-      var type;
-      if(pop("Return")) {
-        body.push(new Return(parse_expr()));
-        need("Semi");
-      }
-      else if(type = pop("Type")) {
-        var name = need("Ident").string;
-        need("Assign");
-        var val = parse_expr();
-        body.push(new VarDecl(name, val));
-        need("Semi");
-      }
-      else if(pop("If")) {
-        need("OParen");
-        var cond = parse_expr();
-        need("CParen");
-        var b = parse_scoped_section();
-      }
-      else if(pop("While")) {
-        need("OParen");
-        var cond = parse_expr();
-        need("CParen");
-        var b = parse_scoped_section();
-      }
-      else {
-        body.push(parse_expr());
-        need("Semi");
-      }
+      body.push(parse_logical_line());
     }
     return new Scope({}, body);
   }
