@@ -1,39 +1,59 @@
 Val = function(type, value) { this.type = type; this.value = value; };
-Ref = function(type, loc) { this.type = type; this.loc = loc; }
+
+function printAST(ast) {
+  console.log(ast);
+}
+
+function RuntimeError(message, position) {
+  this.name = 'RuntimeError';
+  this.message = message || 'Parse error';
+  this.position = position;
+  this.stack = (new Error()).stack;
+}
+RuntimeError.prototype = Object.create(Error.prototype);
+RuntimeError.prototype.constructor = RuntimeError;
 
 function Memory(size) {
   this.memory = new ArrayBuffer(size);
   var int32 = new Int32Array(this.memory);
+
+  function isRef(ref) {
+    return (ref instanceof Val) && (ref.type == 'ptr');
+  }
+  function isVal(val) {
+    return (val instanceof Val);
+  }
   // TODO(alex) base stack size off type size
   this.assign = function(ref, val) {
-    if(!(ref instanceof Ref)) throw `stuck error - assigning to non-referance (${ref})`
-    if(!(val instanceof Val)) throw `stuck error - assigning non-value (${val})`
+    if(!isRef(ref)) throw new RuntimeError(`stuck error - assigning to non-referance (${ref})`);
+    if(!isVal(val)) throw new RuntimeError(`stuck error - assigning non-value (${val})`);
     var element_size = 4;
-    int32[ref.loc / element_size] = val.value;
+    int32[ref.value / element_size] = val.value;
     return val.value;
   }
 
   this.push = function(val) {
-    if(!(val instanceof Val)) throw `stuck error - allocating non-value (${val})`
+    if(!isVal(val)) throw new RuntimeError(`stuck error - allocating non-value (${val})`);
     var element_size = 4;
     // TODO(alex) come up with a cleaner way of doing this?
     size -= element_size;
     // alignment
     size -= (size % element_size);
     int32[size / element_size] = val.value;
-    return new Ref(val.type, size);
+    return new Val('ptr', size);
   }
 
   this.get = function(ref) {
-    if(!(ref instanceof Ref)) throw `stuck error - getting non-referance (${ref})`
+    if(!isRef(ref)) throw new RuntimeError(`stuck error - getting non-referance (${ref})`);
     var element_size = 4;
-    return int32[ref.loc / element_size];
+    return int32[ref.value / element_size];
   }
 }
 
 Function = function(type, params, value) { this.type = type; this.params = params; this.value = value; };
 
-module.exports = function(ast) {
+module.exports = function(ast, print) {
+  if(!print) print = console.log;
   var memory = new Memory(1024);
   var global_env = {};
 
@@ -62,7 +82,7 @@ module.exports = function(ast) {
       return memory.get(ref);
     }
 
-    // returns instance of Ref
+    // Returns Var of type 'ptr'
     function get_location(name) {
       return env[name];
     }
@@ -73,10 +93,6 @@ module.exports = function(ast) {
 
     else if(ast instanceof VarRef) {
       var ref = get_location(ast.name);
-      // console.log("Env:");
-      // console.log(env);
-      // console.log("Name:");
-      // console.log(ast.name);
       var value = mem_lookup(ref);
       return new Val(ref.type, value);
     }
@@ -94,7 +110,7 @@ module.exports = function(ast) {
     }
 
     else if(ast instanceof Print) {
-      console.log(eval(ast.text, env).value);
+      print(eval(ast.text, env).value);
       return undefined;
     }
 
@@ -137,21 +153,20 @@ module.exports = function(ast) {
         return memory.assign(ref, val);
       }
       else {
-        console.log(ast);
-        throw `Unimplemented`;
+        throw new RuntimeError(`Unimplemented`);
       }
     }
 
     else if(ast instanceof Uop) {
       if(ast.uop == "Deref") {
-        return mem_lookup(eval(ast.e1, env));
+        var loc = eval(ast.e1, env);
+        return mem_lookup(loc);
       }
       else if(ast.uop == "Addr") {
         return new Val("ptr", get_location(ast.e1.name).loc);
       }
       else {
-        console.log(ast);
-        throw "Unimplemented";
+        throw new RuntimeError("Unimplemented");
       }
     }
 
@@ -161,8 +176,7 @@ module.exports = function(ast) {
     }
 
     else {
-      console.log(ast);
-      throw "Unimplemented";
+      throw new RuntimeError("Unimplemented");
     }
   }
 
