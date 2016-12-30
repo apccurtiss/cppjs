@@ -17,6 +17,7 @@ var Symbol = function(type, pattern) { this.type = type; this.pattern = pattern;
 var Token = function(type, string, position) { this.type = type; this.string = string; this.position = position; }
 
 var symbols = [
+  //symbols
   new Symbol("OParen", /^\(/),
   new Symbol("CParen", /^\)/),
   new Symbol("OBrace", /^{/),
@@ -26,8 +27,10 @@ var symbols = [
   new Symbol("Star", /^\*/),
   new Symbol("Div", /^\//),
   new Symbol("Mod", /^%/),
-  new Symbol("And", /^&/),
-  new Symbol("Or", /^\|/),
+  new Symbol("And", /^&&/),
+  new Symbol("BitAnd", /^&/),
+  new Symbol("Or", /^\|\|/),
+  new Symbol("BitOr", /^\|/),
   new Symbol("Semi", /^;/),
   new Symbol("Eq", /^==/),
   new Symbol("Neq", /^!=/),
@@ -38,16 +41,21 @@ var symbols = [
   new Symbol("Assign", /^=/),
   new Symbol("Not", /^!/),
   new Symbol("Comma", /^,/),
+  //keywords
+  new Symbol("Return",/^return\b/),
+  new Symbol("While",/^return\b/),
+  new Symbol("Int",/^(int|long|short|long int|short int)\b/),
+  new Symbol("Double",/^(double|float|long double)\b/),
   // names
   new Symbol("Ident", /^[-a-zA-Z_][-a-zA-Z0-9_]*/),
-  // variables
-  new Symbol("Int", /^[0-9]+/),
-  new Symbol("Double", /^[0-9]*\.[0-9]+((e|E)-?[0-9]+)?/),
+  // literals
+  new Symbol("LitDouble", /^[0-9]*\.[0-9]+((e|E)-?[0-9]+)?/),
+  new Symbol("LitInt", /^[0-9]+/),
   // whitespace
   new Symbol("Whitespace", /^\s+/),
+  new Symbol("ParseError", /.*?\b/),
 ]
 
-var types = ["int","float"];
 function check_reserved(token) {
   if(token.type == "Ident") {
     for(var i = 0; i < types.length; i++) {
@@ -77,7 +85,7 @@ function parse_token(code, position) {
   throw new TokenError("Unknown token", position);
 }
 
-module.exports = function(code) {
+function parse(code) {
   var tokens = [];
   var lines = code.split('\n');
   for(var i = 0; i < lines.length; i++) {
@@ -92,6 +100,7 @@ module.exports = function(code) {
       position += token.string.length;
     } while (position < line.length);
   }
-
   return tokens;
 }
+
+module.exports = parse
