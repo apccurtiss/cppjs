@@ -10,6 +10,7 @@ function TokenError(message, position) {
   this.position = position;
   this.stack = (new Error()).stack;
 }
+
 TokenError.prototype = Object.create(Error.prototype);
 TokenError.prototype.constructor = TokenError;
 
@@ -17,69 +18,80 @@ var Symbol = function(type, pattern) { this.type = type; this.pattern = pattern;
 var Token = function(type, string, position) { this.type = type; this.string = string; this.position = position; }
 
 var symbols = [
-  //symbols
+  // basics
   new Symbol("OParen", /^\(/),
   new Symbol("CParen", /^\)/),
   new Symbol("OBrace", /^{/),
   new Symbol("CBrace", /^}/),
+  new Symbol("Semi", /^;/),
+  new Symbol("Comma", /^,/),
+  new Symbol("Question",/^\?/),
+  new Symbol("Colon",/^:/),
+  
+  // unary operators
+  new Symbol("PostInc", /^\+\+/),
+  new Symbol("PostDec", /^\-\-/),
+  
+  // binary operators
   new Symbol("Plus", /^\+/),
   new Symbol("Minus", /^\-/),
   new Symbol("Star", /^\*/),
   new Symbol("Div", /^\//),
   new Symbol("Mod", /^%/),
-  new Symbol("And", /^&&/),
-  new Symbol("BitAnd", /^&/),
-  new Symbol("Or", /^\|\|/),
-  new Symbol("BitOr", /^\|/),
-  new Symbol("Semi", /^;/),
+  
+  // equality operators
   new Symbol("Eq", /^==/),
   new Symbol("Neq", /^!=/),
   new Symbol("Le", /^<=/),
   new Symbol("Ge", /^>=/),
   new Symbol("Lt", /^</),
   new Symbol("Gt", /^>/),
-  new Symbol("Assign", /^=/),
+  
+  // boolean operators
+  new Symbol("And", /^&&/),
+  new Symbol("Or", /^\|\|/),
   new Symbol("Not", /^!/),
-  new Symbol("Comma", /^,/),
-  //keywords
+  
+  // bitwise operators
+  new Symbol("BitOr", /^\|/),
+  new Symbol("BitAnd", /^&/),
+  new Symbol("BitNot", /^~/),
+  
+  // assignment
+  new Symbol("Assign", /^=/),
+  new Symbol("PlusAssign", /^\+=/),
+  new Symbol("MinusAssign", /^\-=/),
+  new Symbol("MultAssign", /^\*=/),
+  new Symbol("DivAssign", /^\/=/),
+  
+  // keywords
   new Symbol("Return",/^return\b/),
-  new Symbol("While",/^return\b/),
+  new Symbol("While",/^while\b/),
+  new Symbol("For",/^for/),
+  new Symbol("If",/^if\b/),
+  new Symbol("Else",/^else\b/),
+  new Symbol("Break",/^break\b/),
+  
+  // keyword types
   new Symbol("Int",/^(int|long|short|long int|short int)\b/),
   new Symbol("Double",/^(double|float|long double)\b/),
+
   // names
   new Symbol("Ident", /^[-a-zA-Z_][-a-zA-Z0-9_]*/),
+  
   // literals
   new Symbol("LitDouble", /^[0-9]*\.[0-9]+((e|E)-?[0-9]+)?/),
-  new Symbol("LitInt", /^[0-9]+/),
+  new Symbol("LitInt", /^(0x)?[0-9]+/),
+
   // whitespace
   new Symbol("Whitespace", /^\s+/),
-  new Symbol("ParseError", /.*?\b/),
 ]
-
-function check_reserved(token) {
-  if(token.type == "Ident") {
-    for(var i = 0; i < types.length; i++) {
-      if(token.string == types[i]) {
-        token.type = "Type";
-        break;
-      }
-    }
-    if(token.string == "return") {
-      token.type = "Return";
-    }
-    if(token.string == "while") {
-      token.type = "While";
-    }
-  }
-  return token;
-}
 
 function parse_token(code, position) {
   var m;
   for(var i = 0; i < symbols.length; i++) {
     if(m = code.match(symbols[i].pattern)) {
-      var tok = new Token(symbols[i].type, m[0], position);
-      return check_reserved(tok);
+      return new Token(symbols[i].type, m[0], position);
     }
   }
   throw new TokenError("Unknown token", position);
@@ -93,7 +105,7 @@ function parse(code) {
     var position = 0;
     var line = lines[i];
     do {
-      var token = parse_token(line.substring(position), new Position(i+1, lines[i], position+1));
+      var token = parse_token(line.substring(position), new Position(i+1, line, position+1));
       if(token.type != "Whitespace") {
         tokens.push(token);
       }
