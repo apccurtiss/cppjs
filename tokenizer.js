@@ -27,18 +27,18 @@ var symbols = [
   new Symbol("Comma", /^,/),
   new Symbol("Question",/^\?/),
   new Symbol("Colon",/^:/),
-  
+
   // unary operators
-  new Symbol("PostInc", /^\+\+/),
-  new Symbol("PostDec", /^\-\-/),
-  
+  new Symbol("Inc", /^\+\+/),
+  new Symbol("Dec", /^\-\-/),
+
   // binary operators
   new Symbol("Plus", /^\+/),
   new Symbol("Minus", /^\-/),
   new Symbol("Star", /^\*/),
   new Symbol("Div", /^\//),
   new Symbol("Mod", /^%/),
-  
+
   // equality operators
   new Symbol("Eq", /^==/),
   new Symbol("Neq", /^!=/),
@@ -46,24 +46,24 @@ var symbols = [
   new Symbol("Ge", /^>=/),
   new Symbol("Lt", /^</),
   new Symbol("Gt", /^>/),
-  
+
   // boolean operators
   new Symbol("And", /^&&/),
   new Symbol("Or", /^\|\|/),
   new Symbol("Not", /^!/),
-  
+
   // bitwise operators
   new Symbol("BitOr", /^\|/),
   new Symbol("BitAnd", /^&/),
   new Symbol("BitNot", /^~/),
-  
+
   // assignment
   new Symbol("Assign", /^=/),
   new Symbol("PlusAssign", /^\+=/),
   new Symbol("MinusAssign", /^\-=/),
   new Symbol("MultAssign", /^\*=/),
   new Symbol("DivAssign", /^\/=/),
-  
+
   // keywords
   new Symbol("Return",/^return\b/),
   new Symbol("While",/^while\b/),
@@ -71,14 +71,14 @@ var symbols = [
   new Symbol("If",/^if\b/),
   new Symbol("Else",/^else\b/),
   new Symbol("Break",/^break\b/),
-  
+
   // keyword types
-  new Symbol("Int",/^(int|long|short|long int|short int)\b/),
-  new Symbol("Double",/^(double|float|long double)\b/),
+  new Symbol("TypDouble",/^(double|float|long double)\b/),
+  new Symbol("TypInt",/^(int|long|short|long int|short int)\b/),
 
   // names
   new Symbol("Ident", /^[-a-zA-Z_][-a-zA-Z0-9_]*/),
-  
+
   // literals
   new Symbol("LitDouble", /^[0-9]*\.[0-9]+((e|E)-?[0-9]+)?/),
   new Symbol("LitInt", /^(0x)?[0-9]+/),
