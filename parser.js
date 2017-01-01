@@ -13,8 +13,9 @@ Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; };
 Return = function(value) { this.value = value; };
 If = function(cond, body) { this.cond = cond; this.body = body; };
 While = function(cond, body) { this.cond = cond; this.body = body; };
-Jump = function(line) { this.line = line; };
-JumpCond = function(line, cond) { this.line = line; this.cond = cond; };
+// Jumps and Redirects are the same, only jumps are associated with some bit of code (if statement, goto) while redirects are not (end of for or while loop, etc)
+Jump = function(line, cond) { this.line = line; this.cond = cond; };
+Redirect = function(line, cond) { this.line = line; this.cond = cond; };
 // TODO(alex) replace with more generic 'fd' type
 Print = function(text) { this.text = text; };
 
@@ -208,17 +209,40 @@ module.exports = function(tokens) {
       var cond = parseExpr();
       var condEnd = need("CParen").position.codeIndex;
       var body = parseLogicalBlock();
-      cond = new Line(condStart, condEnd, new JumpCond(lineNum + body.length + 1, cond));
+      cond = new Line(condStart, condEnd, new Jump(lineNum + body.length + 1, cond));
       return [cond].concat(body);
     }
     else if(pop("For")) {
       need("OParen");
+      // TODO(alex) clean up repetitive code (Izaak help plz)
       var start = nextToken().position.codeIndex;
-      var cond = parseExpr();
-      var end = need("CParen").position.codeIndex;
+      var expr = parseExpr();
+      var end = need("Semi").position.codeIndex;
+      var doFirst = new Line(start, end, expr);
+
+      start = nextToken().position.codeIndex;
+      expr = parseExpr();
+      end = need("Semi").position.codeIndex;
+      var cond = new Line(start, end, expr);
+
+      start = nextToken().position.codeIndex;
+      expr = parseExpr();
+      end = need("CParen").position.codeIndex;
+      var inc = new Line(start, end, expr);
+
       var body = parseLogicalBlock();
-      cond = new Line(start, end, new JumpCond(lineNum + body.length + 1, cond));
-      return [cond].concat(body);
+
+      cond.ast = new Jump(lineNum + body.length + 5, cond.ast);
+
+      var loop = [doFirst];
+      loop.push(cond);
+      loop = loop.concat(body);
+      loop.push(inc);
+      loop.push(new Redirect(lineNum + 2));
+      console.log("Loop:")
+      console.log(loop);
+      return loop;
+
     }
     else if(peek("OBrace")) {
       return parseScopedSection();
