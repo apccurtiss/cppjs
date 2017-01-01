@@ -1,7 +1,8 @@
-function Position(lnum, line, index) {
+function Position(lnum, line, lineIndex, codeIndex) {
   this.lnum = lnum;
   this.line = line;
-  this.index = index;
+  this.lineIndex = lineIndex;
+  this.codeIndex = codeIndex;
 }
 
 function TokenError(message, position) {
@@ -73,13 +74,15 @@ var symbols = [
   new Symbol("Break",/^break\b/),
 
   // keyword types
-  new Symbol("TypDouble",/^(double|float|long double)\b/),
-  new Symbol("TypInt",/^(int|long|short|long int|short int)\b/),
+  new Symbol("Type",/^(double|float|long double)\b/),
+  new Symbol("Type",/^(int|long|short|long int|short int)\b/),
+  new Symbol("Type",/^char\b/),
 
   // names
   new Symbol("Ident", /^[-a-zA-Z_][-a-zA-Z0-9_]*/),
 
   // literals
+  new Symbol("LitStr", /^".*?"/),
   new Symbol("LitDouble", /^[0-9]*\.[0-9]+((e|E)-?[0-9]+)?/),
   new Symbol("LitInt", /^(0x)?[0-9]+/),
 
@@ -100,17 +103,20 @@ function parse_token(code, position) {
 function parse(code) {
   var tokens = [];
   var lines = code.split('\n');
+  var index = 0;
   for(var i = 0; i < lines.length; i++) {
     if(!lines[i]) continue;
     var position = 0;
     var line = lines[i];
     do {
-      var token = parse_token(line.substring(position), new Position(i+1, line, position+1));
+      var token = parse_token(line.substring(position), new Position(i+1, line, position+1, index+1));
       if(token.type != "Whitespace") {
         tokens.push(token);
       }
+      index += token.string.length;
       position += token.string.length;
     } while (position < line.length);
+    index++;
   }
   return tokens;
 }

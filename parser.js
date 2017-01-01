@@ -1,8 +1,10 @@
+// logical line
+const Line = function(start, end, ast) { this.start = start; this.end = end; this.ast = ast; };
+
 // Tokens
-Scope = function(memory, body) { this.memory = memory; this.body = body; };
 FunctionDecl = function(name, type, params, value) { this.name = name; this.type = type; this.params = params; this.value = value; };
 Param = function(type, name) { this.type = type; this.name = name; };
-VarDecl = function(name, val) { this.name = name; this.val = val; };
+VarDecl = function(type, name, val) { this.name = name; this.val = val; };
 VarRef = function(name) { this.name = name; };
 Call = function(name, args) { this.name = name; this.args = args; };
 Val = function(type, value) { this.type = type; this.value = value; };
@@ -11,31 +13,42 @@ Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; };
 Return = function(value) { this.value = value; };
 If = function(cond, body) { this.cond = cond; this.body = body; };
 While = function(cond, body) { this.cond = cond; this.body = body; };
+Jump = function(line) { this.line = line; };
+JumpCond = function(line, cond) { this.line = line; this.cond = cond; };
 // TODO(alex) replace with more generic 'fd' type
 Print = function(text) { this.text = text; };
 
-function ParseError(message, position) {
+function ParseError(message) {
   this.name = 'ParseError';
-  this.message = message || 'Parse error';
-  this.position = position;
   this.stack = (new Error()).stack;
+  this.message = message || 'Parse error';
 }
 ParseError.prototype = Object.create(Error.prototype);
 ParseError.prototype.constructor = ParseError;
 
+function positionToString(tok) {
+  var str = "Line " + tok.position.lnum;
+  str += ":\n" + tok.position.line;
+  str += "\n" + Array(tok.position.index).join(" ");
+  str += "^";
+  return str;
+}
+
 // TODO(alex) use generator instead of array of tokens?
 module.exports = function(tokens) {
-  function peek(type) {
+  function nextToken() {
     if(!tokens.length) {
       throw new ParseError("Unexpected end of file");
     }
-    else {
-      return tokens[0].type == type;
-    }
+    return tokens[0];
+  }
+
+  function peek(type) {
+      return nextToken().type == type;
   }
 
   function pop(type) {
-    if(peek(type)) {
+    if(!type || peek(type)) {
       token = tokens[0];
       tokens = tokens.slice(1);
       return token;
@@ -47,12 +60,12 @@ module.exports = function(tokens) {
     var tok = pop(type);
     if(!tok) {
       console.trace();
-      throw new ParseError(message || `Expected type '${type}' but got '${tokens[0].type}'`, tokens[0].position);
+      throw new ParseError((message || `Expected type '${type}' but got '${tokens[0].type}'`) + "\n" + positionToString(tokens[0]));
     }
     return tok;
   }
 
-  function parse_expr() {
+  function parseExpr() {
     return level14();
   }
 
@@ -132,13 +145,13 @@ module.exports = function(tokens) {
 
   function atom() {
     var a;
-    if(a = pop("Int")) {
+    if(a = pop("LitInt")) {
       return new Val("Int", parseInt(a.string));
     }
     else if(a = pop("Ident")) {
       // Function
       if(peek("OParen")) {
-        var pl = parse_list("OParen", "CParen", "Comma", parse_expr);
+        var pl = parseList("OParen", "CParen", "Comma", parseExpr);
         return new Call(a.string, pl);
       }
       // Variable
@@ -147,7 +160,7 @@ module.exports = function(tokens) {
       }
     }
     else if(pop("OParen")) {
-      var p = parse_expr();
+      var p = parseExpr();
       need("CParen");
       return p;
     }
@@ -156,7 +169,7 @@ module.exports = function(tokens) {
     }
   }
 
-  function parse_list(start, end, delim, get_element) {
+  function parseList(start, end, delim, get_element) {
     var list = [];
     need(start);
     if(!pop(end)) {
@@ -168,46 +181,61 @@ module.exports = function(tokens) {
     return list;
   }
 
-  function parse_logical_line() {
-    var type;
+  function parseLogicalLine() {
+    var start = nextToken().position.codeIndex;
     var ast;
     if(pop("Return")) {
-      ast = new Return(parse_expr());
-      need("Semi");
+      ast = new Return(parseExpr());
     }
-    else if(type = pop("Type")) {
+    else if(peek("Type")) {
+      var type = pop(type);
       var name = need("Ident").string;
       need("Assign");
-      var val = parse_expr();
-      ast = new VarDecl(name, val);
-      need("Semi");
-    }
-    else if(pop("If")) {
-      need("OParen");
-      var cond = parse_expr();
-      need("CParen");
-      var b = parse_scoped_section();
-    }
-    else if(pop("While")) {
-      need("OParen");
-      var cond = parse_expr();
-      need("CParen");
-      var b = parse_scoped_section();
+      var val = parseExpr();
+      ast = new VarDecl(type, name, val);
     }
     else {
-      ast = parse_expr();
-      need("Semi");
+      ast = parseExpr();
     }
-    return ast;
+    var end = need("Semi").position.codeIndex + 1;
+    return new Line(start, end, ast);
   }
 
-  function parse_scoped_section() {
+  function parseLogicalBlock(lineNum) {
+    if(pop("If")) {
+      need("OParen");
+      var condStart = nextToken().position.codeIndex;
+      var cond = parseExpr();
+      var condEnd = need("CParen").position.codeIndex;
+      var body = parseLogicalBlock();
+      cond = new Line(condStart, condEnd, new JumpCond(lineNum + body.length + 1, cond));
+      return [cond].concat(body);
+    }
+    else if(pop("For")) {
+      need("OParen");
+      var start = nextToken().position.codeIndex;
+      var cond = parseExpr();
+      var end = need("CParen").position.codeIndex;
+      var body = parseLogicalBlock();
+      cond = new Line(start, end, new JumpCond(lineNum + body.length + 1, cond));
+      return [cond].concat(body);
+    }
+    else if(peek("OBrace")) {
+      return parseScopedSection();
+    }
+    else {
+      return [parseLogicalLine()];
+    }
+  }
+
+  function parseScopedSection() {
     var body = [];
     need("OBrace");
     while(!pop("CBrace")) {
-      body.push(parse_logical_line());
+      var block = parseLogicalBlock(body.length);
+      body = body.concat(block);
     }
-    return new Scope({}, body);
+    return body;
   }
 
 
@@ -221,14 +249,14 @@ module.exports = function(tokens) {
 
     // function declaration
     if(peek("OParen")) {
-      var params = parse_list("OParen", "CParen", "Comma", () => new Param(need("Type").string, need("Ident").string));
-      var body = pop("Semi") ? undefined : parse_scoped_section().body;
+      var params = parseList("OParen", "CParen", "Comma", () => new Param(need("Type").string, need("Ident").string));
+      var body = parseScopedSection();
       globals.push(new FunctionDecl(name, typ, params, body));
     }
     // variable declaration
     else {
       need("Assign");
-      var val = parse_expr();
+      var val = parseExpr();
       need("Semi");
       globals.push(new VarDecl(name, new Val(val.type, val.value)));
     }
