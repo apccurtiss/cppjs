@@ -201,66 +201,62 @@ module.exports = function(tokens) {
 
   function parseFunctionBody() {
     var frame = new Frame();
-    var body = [];
+
+    function getLinePosition(getLine) {
+      var start = nextToken().position.codeIndex;
+      var ast = getLine();
+      var end = nextToken().position.codeIndex;
+      return new Line(start, end, ast);
+    }
 
     function parseLogicalLine() {
-      var start = nextToken().position.codeIndex;
-      var ast;
-      // return statement
-      if(pop("Return")) {
-        ast = new Return(parseExpr());
-      }
-      // variable declaration
-      else if(peek("Type")) {
-        var type = pop(type).string;
-        var name = need("Ident");
-        var value = pop("Assign") ? parseExpr() : undefined;
-        if(frame.lookup(name.string)) {
-          throw new ParseError(`Variable ${name.string} was already declared before this point:\n${positionToString(name)}`);
+      var ret = getLinePosition(() => {
+        var ast;
+        // return statement
+        if(pop("Return")) {
+          ast = new Return(parseExpr());
         }
+        // variable declaration
+        else if(peek("Type")) {
+          var type = pop(type).string;
+          var name = need("Ident");
+          var value = pop("Assign") ? parseExpr() : undefined;
+          if(frame.lookup(name.string)) {
+            throw new ParseError(`Variable ${name.string} was already declared before this point:\n${positionToString(name)}`);
+          }
+          else {
+            frame.insert(type, name.string, value);
+          }
+          ast = new Decl(type, name.string, value);
+        }
+        // normal expression
         else {
-          frame.insert(type, name.string, value);
+          ast = parseExpr();
         }
-        ast = new Decl(type, name.string, value);
-      }
-      // normal expression
-      else {
-        ast = parseExpr();
-      }
-      var end = need("Semi", "A line should have ended with a semicolon before this point").position.codeIndex + 1;
-      return new Line(start, end, ast);
+        return ast;
+      });
+      need("Semi", "A line should have ended with a semicolon before this point");
+      return ret;
     }
 
     function parseIf() {
       need("OParen");
-      var condStart = nextToken().position.codeIndex;
-      var cond = parseExpr();
-      var condEnd = need("CParen").position.codeIndex;
+      var cond = getLinePosition(parseExpr);
+      need("CParen");
       var body = parseLogicalBlock();
-      cond = new Line(condStart, condEnd, new Jump(body.length + 1, new Uop("Not", cond)));
+      cond.ast = new Jump(body.length + 1, new Uop("Not", cond.ast));
       return [cond].concat(body);
     }
 
     function parseFor() {
       need("OParen");
-      // TODO(alex) clean up repetitive code (Izaak help plz)
-      var start = nextToken().position.codeIndex;
-      var expr = parseExpr();
-      var end = need("Semi").position.codeIndex;
-      var doFirst = new Line(start, end, expr);
-
-      start = nextToken().position.codeIndex;
-      expr = parseExpr();
-      end = need("Semi").position.codeIndex;
-      var cond = new Line(start, end, expr);
-
-      start = nextToken().position.codeIndex;
-      expr = parseExpr();
-      end = need("CParen").position.codeIndex;
-      var inc = new Line(start, end, expr);
-
+      var doFirst = getLinePosition(parseExpr);
+      need("Semi");
+      var cond = getLinePosition(parseExpr);
+      need("Semi");
+      var inc = getLinePosition(parseExpr);
+      need("CParen");
       var body = parseLogicalBlock();
-
       cond.ast = new Jump(body.length + 3, new Uop("Not", cond.ast));
       return [doFirst].concat([cond]).concat(body).concat([inc]).concat([new Redirect(-body.length - 2)]);
     }
@@ -286,7 +282,7 @@ module.exports = function(tokens) {
       var body = [];
       need("OBrace");
       while(!pop("CBrace")) {
-        body.concat(parseLogicalBlock());
+        body = body.concat(parseLogicalBlock());
       }
       return body;
     }
@@ -297,9 +293,9 @@ module.exports = function(tokens) {
       frame.insert(type, name);
       return new Param(type, name);
     });
+
     var body = parseScopedSection();
-    return new CFunction(typ, params, body, frame);
-    // return { "code": body, "frame": frame }
+    return new CFunction(undefined, params, body, frame);
   }
 
   var globals = {};
@@ -325,12 +321,14 @@ module.exports = function(tokens) {
       // globals.push(new CStruct(name, members, size));
     }
     else {
-      var typ = need("Type").string;
+      var type = need("Type").string;
       var name = need("Ident").string;
 
       // function declaration
       if(peek("OParen")) {
-        functions[name] = parseFunctionBody();
+        var body = parseFunctionBody();
+        body.type = type;
+        functions[name] = body;
       }
 
       // variable declaration
@@ -338,7 +336,7 @@ module.exports = function(tokens) {
         need("Assign");
         var val = parseExpr();
         need("Semi");
-        globals[name] = new Val(val.type, val.value);
+        globals[name] = new Val(type, val.value);
       }
     }
   }
