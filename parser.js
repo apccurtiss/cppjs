@@ -2,20 +2,22 @@
 const Line = function(start, end, ast) { this.start = start; this.end = end; this.ast = ast; };
 
 // Tokens
-FunctionDecl = function(name, type, params, value) { this.name = name; this.type = type; this.params = params; this.value = value; };
+CStruct = function(name, memoryLocations) { this.name = name; this.memoryLocations = memoryLocations; };
+CFunction = function(type, params, body, memoryLocations) { this.type = type; this.params = params; this.body = body; this.memoryLocations = memoryLocations; };
 Param = function(type, name) { this.type = type; this.name = name; };
-VarDecl = function(type, name, val) { this.name = name; this.val = val; };
-VarRef = function(name) { this.name = name; };
+MemoryLocations = function(size, members) { this.size = size; this.members = members; }
+Member = function(type, offset) { this.type = type; this.offset = offset; };
+Global = function(type, value, offset) { this.type = type, this.value = value; this.offset = offset; }
+Decl = function(type, name, val) { this.name = name; this.val = val; };
+Var = function(name) { this.name = name; };
 Call = function(name, args) { this.name = name; this.args = args; };
 Val = function(type, value) { this.type = type; this.value = value; };
 Bop = function(bop, e1, e2) { this.bop = bop; this.e1 = e1; this.e2 = e2; };
 Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; };
 Return = function(value) { this.value = value; };
-If = function(cond, body) { this.cond = cond; this.body = body; };
-While = function(cond, body) { this.cond = cond; this.body = body; };
 // Jumps and Redirects are the same, only jumps are associated with some bit of code (if statement, goto) while redirects are not (end of for or while loop, etc)
-Jump = function(line, cond) { this.line = line; this.cond = cond; };
-Redirect = function(line, cond) { this.line = line; this.cond = cond; };
+Jump = function(distance, cond) { this.distance = distance; this.cond = cond; };
+Redirect = function(distance, cond) { this.distance = distance; this.cond = cond; };
 // TODO(alex) replace with more generic 'fd' type
 Print = function(text) { this.text = text; };
 
@@ -27,15 +29,14 @@ function ParseError(message) {
 ParseError.prototype = Object.create(Error.prototype);
 ParseError.prototype.constructor = ParseError;
 
+// prints a position in an easy-to-read manner for error reporting
 function positionToString(tok) {
   var str = "Line " + tok.position.lnum;
   str += ":\n" + tok.position.line;
-  str += "\n" + Array(tok.position.index).join(" ");
-  str += "^";
+  str += "\n" + Array(tok.position.index).join(" ") + "^";
   return str;
 }
 
-// TODO(alex) use generator instead of array of tokens?
 module.exports = function(tokens) {
   function nextToken() {
     if(!tokens.length) {
@@ -157,7 +158,7 @@ module.exports = function(tokens) {
       }
       // Variable
       else {
-        return new VarRef(a.string);
+        return new Var(a.string);
       }
     }
     else if(pop("OParen")) {
@@ -170,12 +171,12 @@ module.exports = function(tokens) {
     }
   }
 
-  function parseList(start, end, delim, get_element) {
+  function parseList(start, end, delim, parseElement) {
     var list = [];
     need(start);
     if(!pop(end)) {
       do {
-        list.push(get_element());
+        list.push(parseElement());
       } while(pop(delim));
       need(end);
     }
@@ -185,64 +186,64 @@ module.exports = function(tokens) {
   function parseLogicalLine() {
     var start = nextToken().position.codeIndex;
     var ast;
+    // return statement
     if(pop("Return")) {
       ast = new Return(parseExpr());
     }
+    // variable declaration
     else if(peek("Type")) {
       var type = pop(type);
       var name = need("Ident").string;
-      need("Assign");
-      var val = parseExpr();
-      ast = new VarDecl(type, name, val);
+      ast = new Decl(type, name, pop("Assign") ? parseExpr() : undefined);
     }
+    // normal expression
     else {
       ast = parseExpr();
     }
-    var end = need("Semi").position.codeIndex + 1;
+    var end = need("Semi", "A line should have ended with a semicolon before this point").position.codeIndex + 1;
     return new Line(start, end, ast);
   }
 
-  function parseLogicalBlock(lineNum) {
+  function parseIf() {
+    need("OParen");
+    var condStart = nextToken().position.codeIndex;
+    var cond = parseExpr();
+    var condEnd = need("CParen").position.codeIndex;
+    var body = parseLogicalBlock();
+    cond = new Line(condStart, condEnd, new Jump(body.length + 1, new Uop("Not", cond)));
+    return [cond].concat(body);
+  }
+
+  function parseFor() {
+    need("OParen");
+    // TODO(alex) clean up repetitive code (Izaak help plz)
+    var start = nextToken().position.codeIndex;
+    var expr = parseExpr();
+    var end = need("Semi").position.codeIndex;
+    var doFirst = new Line(start, end, expr);
+
+    start = nextToken().position.codeIndex;
+    expr = parseExpr();
+    end = need("Semi").position.codeIndex;
+    var cond = new Line(start, end, expr);
+
+    start = nextToken().position.codeIndex;
+    expr = parseExpr();
+    end = need("CParen").position.codeIndex;
+    var inc = new Line(start, end, expr);
+
+    var body = parseLogicalBlock();
+
+    cond.ast = new Jump(body.length + 3, new Uop("Not", cond.ast));
+    return [doFirst].concat([cond]).concat(body).concat([inc]).concat([new Redirect(-body.length - 2)]);
+  }
+
+  function parseLogicalBlock() {
     if(pop("If")) {
-      need("OParen");
-      var condStart = nextToken().position.codeIndex;
-      var cond = parseExpr();
-      var condEnd = need("CParen").position.codeIndex;
-      var body = parseLogicalBlock();
-      cond = new Line(condStart, condEnd, new Jump(lineNum + body.length + 1, cond));
-      return [cond].concat(body);
+      return parseIf();
     }
     else if(pop("For")) {
-      need("OParen");
-      // TODO(alex) clean up repetitive code (Izaak help plz)
-      var start = nextToken().position.codeIndex;
-      var expr = parseExpr();
-      var end = need("Semi").position.codeIndex;
-      var doFirst = new Line(start, end, expr);
-
-      start = nextToken().position.codeIndex;
-      expr = parseExpr();
-      end = need("Semi").position.codeIndex;
-      var cond = new Line(start, end, expr);
-
-      start = nextToken().position.codeIndex;
-      expr = parseExpr();
-      end = need("CParen").position.codeIndex;
-      var inc = new Line(start, end, expr);
-
-      var body = parseLogicalBlock();
-
-      cond.ast = new Jump(lineNum + body.length + 5, cond.ast);
-
-      var loop = [doFirst];
-      loop.push(cond);
-      loop = loop.concat(body);
-      loop.push(inc);
-      loop.push(new Redirect(lineNum + 2));
-      console.log("Loop:")
-      console.log(loop);
-      return loop;
-
+      return parseFor();
     }
     else if(peek("OBrace")) {
       return parseScopedSection();
@@ -260,30 +261,55 @@ module.exports = function(tokens) {
       body = body.concat(block);
     }
     return body;
+    // return { "code": body, "frame": frame }
   }
-
 
   // program body can only be function or variable declarations
-  var globals = [];
+  var types = {
+    "int": 8,
+    "float": 8,
+  };
+  var globals = {};
+  var functions = {};
   while(tokens.length) {
     if(pop("Semi")) continue;
-    var tok = need("Type");
-    var name = need("Ident").string;
-    var typ = tok.string;
 
-    // function declaration
-    if(peek("OParen")) {
-      var params = parseList("OParen", "CParen", "Comma", () => new Param(need("Type").string, need("Ident").string));
-      var body = parseScopedSection();
-      globals.push(new FunctionDecl(name, typ, params, body));
+    // struct declaration
+    if(pop("Struct")) {
+      var size = 0;
+      // may be undefined
+      var name = pop("Ident").string;
+      need("OBrace");
+      var members = [];
+      while(!pop("CBrace")) {
+        var typ = need("Type").string;
+        var memName = need("Ident").string;
+        need("Semi");
+        members.push(new Member(typ, memName, size));
+        size += typeSizes[typ];
+      }
+      typeSizes[name] = size;
+      globals.push(new CStruct(name, members, size));
     }
-    // variable declaration
     else {
-      need("Assign");
-      var val = parseExpr();
-      need("Semi");
-      globals.push(new VarDecl(name, new Val(val.type, val.value)));
+      var typ = need("Type").string;
+      var name = need("Ident").string;
+
+      // function declaration
+      if(peek("OParen")) {
+        var params = parseList("OParen", "CParen", "Comma", () => new Param(need("Type").string, need("Ident").string));
+        var body = parseScopedSection();
+        functions[name] = new CFunction(typ, params, body);
+      }
+
+      // variable declaration
+      else {
+        need("Assign");
+        var val = parseExpr();
+        need("Semi");
+        globals[name] = new Val(val.type, val.value);
+      }
     }
   }
-  return globals;
+  return functions;
 }
