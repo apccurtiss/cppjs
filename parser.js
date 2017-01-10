@@ -315,6 +315,9 @@ module.exports = function(tokens) {
     });
 
     var body = parseScopedSection(locations);
+    if(!(body[body.length-1] instanceof Return)) {
+      body.push(new Return());
+    }
     return new CFunction(undefined, params, body, frame);
   }
 
