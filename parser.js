@@ -31,10 +31,12 @@ Frame = function() {
     return v;
   }
 }
+
 Scope = function() {
   var typedefs = {};
   var objectDefinitions = {};
   var vars = {};
+  this.get = function() { return vars; };
   this.insertVar = function(name, loc) {
     vars[name] = loc;
   }
@@ -63,11 +65,11 @@ Scope = function() {
     return clone;
   }
 }
-CObject = function(name, members, size) { this.name = name; this.members = members; this.size = size; };
+CObject = function(name, frame) { this.name = name; this.frame = frame; };
 CFunction = function(type, params, body, frame) { this.type = type; this.params = params; this.body = body; this.frame = frame; };
 Param = function(type, name) { this.type = type; this.name = name; };
 Struct = function(size, members) { this.size = size; this.members = members; };
-VarDecl = function(type, name, val) { this.name = name; this.val = val; };
+VarDecl = function(type, name, position, val) { this.type = type; this.name = name; this.position = position; this.val = val; };
 FuncDecl = function(type, name, params, body) { this.name = name; this.val = val; };
 Var = function(name, offset) { this.name = name; this.offset = offset; };
 Call = function(name, args) { this.name = name; this.args = args; };
@@ -83,7 +85,7 @@ Redirect = function(distance, cond) { this.distance = distance; this.cond = cond
 // TODO(alex) replace with more generic 'fd' type
 Print = function(text) { this.text = text; };
 
-function ParseError(message) {
+function ParseError(message, position) {
   this.name = 'ParseError';
   this.stack = (new Error()).stack;
   this.message = message || 'Parse error';
@@ -93,17 +95,20 @@ ParseError.prototype.constructor = ParseError;
 
 // prints a position in an easy-to-read manner for error reporting
 function positionToString(position) {
-  var str = "Line " + position.lnum;
-  str += ":\n" + position.line;
-  str += "\n" + Array(position.lineIndex).join(" ");
-  str += "^";
+  var str = `Line ${position.lnum}:\n`;
+  str += position.line + "\n";
+  str += Array(position.lineIndex).join(" ") + "^";
   return str;
 }
 
 module.exports = function(tokens) {
-  var scopes = [];
+  var scopes = [new Scope()];
+  var globals = new Frame;
+  var currentFrame;
+  var functions = {};
+  var currentToken = 0;
   function pushScope() {
-    scopes.push(new Scope());
+    scopes.push(scopes[scopes.length-1].clone());
   }
   function popScope() {
     scopes.pop();
@@ -111,9 +116,10 @@ module.exports = function(tokens) {
   function varLookup(ident) {
     for(var i = scopes.length-1; i >= 0; i--) {
       try {
-        return scopes[i].lookup(ident);
+        return scopes[i].lookupVar(ident);
       }
       catch(err) {
+        console.log("Got error: " + err.message);
         continue;
       };
     }
@@ -122,12 +128,9 @@ module.exports = function(tokens) {
   function varInsert(name, position) {
     scopes[scopes.length-1].insertVar(name, position);
   }
-
-  var globalLocations = new Scope();
-  var globals = new Frame();
-  var functions = {};
-
-  var currentToken = 0;
+  function objInsert(name, members) {
+    scopes[scopes.length-1].insertObjDef(name, members);
+  }
 
   function nextToken() {
     if(currentToken == tokens.length) {
@@ -151,7 +154,6 @@ module.exports = function(tokens) {
   function need(type, message) {
     var tok = pop(type);
     if(!tok) {
-      console.trace();
       throw new ParseError((message || `Expected type '${type}' but got '${nextToken().type}'`) + "\n" + positionToString(nextToken().position));
     }
     return tok;
@@ -168,20 +170,38 @@ module.exports = function(tokens) {
     }
   }
 
-  function parsePattern() {
-    return tryToParse(() => {
-      var results = [];
+  function peekPattern() {
+    var startToken = currentToken;
+    try {
       for (var i = 0; i < arguments.length; i++) {
         if(arguments[i] instanceof Function) {
-          // use function to parse token stream
-          results.push(arguments[i]());
+          arguments[i]();
         }
         else {
           need(arguments[i]);
         }
       }
-      return results;
-    });
+    }
+    catch(err) {
+      currentToken = startToken;
+      return false;
+    }
+    currentToken = startToken;
+    return true;
+  }
+
+  function needPattern() {
+    var results = [];
+    for (var i = 0; i < arguments.length; i++) {
+      if(arguments[i] instanceof Function) {
+        // use function to parse token stream
+        results.push(arguments[i]());
+      }
+      else {
+        need(arguments[i]);
+      }
+    }
+    return results;
   }
 
   function parseList(start, end, delim, parseFunction) {
@@ -196,90 +216,7 @@ module.exports = function(tokens) {
     return list;
   }
 
-  function parseVarDecls() {
-    var baseType = need("Type").string;
-    var decls;
-    do {
-      var type = baseType;
-      // pointer modifyer
-      while(pop("Star")) {
-        type = new Ptr(type);
-      }
-      var ident = need("Ident");
-      // array modifyer
-      while(pop("OBracket")) {
-        var size = parseExpr();
-        need("CBracket");
-        type = new Arr(type, size);
-      }
-      var value = pop("Assign") ? parseExpr() : undefined;
-      decls.push(new param);
-    }
-    while(pop("Comma"));
-    return decls;
-  }
-
-  function parseFuncDecl() {
-
-  }
-
-  function parseStructDeclaration() {
-    need("Struct");
-    var ident = pop("Ident");
-    var members = [];
-    need("OBrace");
-    while(!pop("CBrace")) {
-      var type = need("Type").string;
-      while(pop("Star")) {
-        type = new Ptr(type);
-      }
-      var ident = need("Ident");
-      while(pop("OBracket")) {
-        var size = parseExpr();
-        need("CBracket");
-        type = new Arr(type, size);
-      }
-      members.push(new param)
-    }
-  }
-
-  function parseDeclarations(newVarFunction, newFuncFunction, variableLookupFunction) {
-    var type = need("Type").string;
-    while(true) {
-      // pointer declaration
-      while(pop("Star")) {
-        type = new Ptr(type);
-      }
-      var ident = need("Ident");
-      // function declaration
-      if(peek("OParen")) {
-        var definition = parseFunctionDefinition(type);
-        newFuncFunction(ident.string, definition, ident.position);
-        return;
-      }
-      // array declaration
-      if(pop("OBracket")) {
-        var size = parseInt(need("LitInt").string);
-        need("CBracket");
-        type = new Arr(type, size);
-      }
-      // initializaiton on declaration is optional
-      var value = pop("Assign") ? parseExpr(variableLookupFunction) : undefined;
-      newVarFunction(type, ident.string, value, ident.position);
-      // repeat if variable
-      if(pop("Comma")) {
-        newFuncFunction = (type, name, position) => {
-          `You cannot declare a function here:\n${positionToString(position)}`;
-        }
-      }
-      else {
-        break;
-      }
-    }
-    need("Semi", "A line should have ended with a semicolon before this point");
-  }
-
-  function parseExpr(variableLookupFunction) {
+  function parseExpr() {
     // function names refer to levels of precedence, as in http://en.cppreference.com/w/c/language/operator_precedence
     function level14() {
       function helper(acc) {
@@ -362,16 +299,16 @@ module.exports = function(tokens) {
       else if(a = pop("Ident")) {
         // Function
         if(peek("OParen")) {
-          var pl = parseList("OParen", "CParen", "Comma", () => parseExpr(variableLookupFunction));
+          var pl = parseList("OParen", "CParen", "Comma", parseExpr);
           return new Call(a.string, pl);
         }
         // Variable
         else {
-          return variableLookupFunction(a);
+          return varLookup(a);
         }
       }
       else if(pop("OParen")) {
-        var p = parseExpr(variableLookupFunction);
+        var p = parseExpr();
         need("CParen");
         return p;
       }
@@ -384,137 +321,156 @@ module.exports = function(tokens) {
     return level14();
   }
 
-  function parseFunctionDefinition(type) {
-    var frame = new Frame();
+  function positionOf(parseFunction) {
+    var start = nextToken().position.codeIndex;
+    var ast = parseFunction();
+    var end = nextToken().position.codeIndex;
+    return new Line(ast, start, end);
+  }
 
-    function parseScope(locations) {
-      // names to corrosponding token
-      var localVars = {};
-
-      function parseExpression() {
-        return parseExpr(locations.lookupVar);
+  function parseLogicalLine() {
+    var ret = positionOf(() => {
+      var ast;
+      // return statement
+      if(pop("Return")) {
+        ast = [new Return(parseExpr())];
+        need("Semi", "A line should have ended with a semicolon before this point");
       }
-
-      function positionOf(parseFunction) {
-        var start = nextToken().position.codeIndex;
-        var ast = parseFunction();
-        var end = nextToken().position.codeIndex;
-        return new Line(ast, start, end);
+      // variable declaration
+      else if(peek("Type")) {
+        ast = parseVarDecls();
       }
-
-      function parseLogicalLine() {
-        var ret = positionOf(() => {
-          var ast;
-          // return statement
-          if(pop("Return")) {
-            ast = new Return(parseExpression());
-          }
-          // variable declaration
-          else if(peek("Type")) {
-            parseDeclarations(
-              // new variable
-              (type, name, value, position) => {
-                if(localVars[name]) {
-                  throw new ParseError(`Variable ${name} was already declared before this point:\n${positionToString(position)}`);
-                }
-                else {
-                  localVars[name] = position;
-                }
-                locations.insertVar(name, -frame.size);
-                var v = frame.push(type, name);
-                ast = new Bop("assign", new Var(v.name, -v.offset), value);
-              },
-              // new function
-              (name, definition, position) => {
-                throw new ParseError(`You cannot declare a function inside another function:\n${positionToString(position)}`);
-              },
-              locations.lookupVar
-            );
-            return ast;
-          }
-          // normal expression
-          else {
-            ast = parseExpression();
-          }
-          need("Semi", "A line should have ended with a semicolon before this point");
-          return ast;
-        });
-        return ret;
+      // normal expression
+      else {
+        ast = [parseExpr()];
+        need("Semi", "A line should have ended with a semicolon before this point");
       }
+      return ast;
+    });
+    return ret;
+  }
 
-      function expression() {
-        return positionOf(parseExpression);
-      }
-
-      function parseLogicalBlock() {
-        if(pop("If")) {
-          var cond = parsePattern("OParen", expression, "CParen");
-          var body = parseLogicalBlock();
-          // modify the condition to jump to end of the body if it's not met
-          cond.ast = new Jump(body.length + 1, new Uop("Not", cond.ast));
-          return [cond].concat(body);
-        }
-        else if(pop("For")) {
-          var header = parsePattern("OParen", expression, "Semi", expression, "Semi", expression, "CParen");
-          var doFirst = header[0], cond = header[1], inc = header[2];
-          var body = parseLogicalBlock();
-          // modify the condition to jump to end of the body if it's not met
-          cond.ast = new Jump(body.length + 3, new Uop("Not", cond.ast));
-          return [doFirst].concat([cond]).concat(body).concat([inc]).concat([new Redirect(-body.length - 2)]);
-        }
-        else if(peek("OBrace")) {
-          return parseScope(locations.clone());
-        }
-        else {
-          return [parseLogicalLine()];
-        }
-      }
-
-      var body = [];
-      need("OBrace");
-      while(!pop("CBrace")) {
-        body = body.concat(parseLogicalBlock());
-      }
-      return body;
+  function parseLogicalBlock() {
+    function expression() {
+      return positionOf(parseExpr);
     }
+    if(pop("If")) {
+      var cond = needPattern("OParen", expression, "CParen");
+      var body = parseLogicalBlock();
+      // modify the condition to jump to end of the body if it's not met
+      cond.ast = new Jump(body.length + 1, new Uop("Not", cond.ast));
+      return [cond].concat(body);
+    }
+    else if(pop("For")) {
+      var header = needPattern("OParen", expression, "Semi", expression, "Semi", expression, "CParen");
+      var doFirst = header[0], cond = header[1], inc = header[2];
+      var body = parseLogicalBlock();
+      // modify the condition to jump to end of the body if it's not met
+      cond.ast = new Jump(body.length + 3, new Uop("Not", cond.ast));
+      return [doFirst].concat([cond]).concat(body).concat([inc]).concat([new Redirect(-body.length - 2)]);
+    }
+    else if(peek("OBrace")) {
+      return parseScope();
+    }
+    else {
+      return parseLogicalLine();
+    }
+  }
 
-    var localLocations = globalLocations.clone();
+  function parseScope() {
+    pushScope();
+    var body = [];
+    need("OBrace");
+    while(!pop("CBrace")) {
+      body = body.concat(parseLogicalBlock());
+    }
+    popScope();
+    return body;
+  }
+
+  function parseStructDecl() {
+    need("Struct");
+    var ident = pop("Ident");
+    var members = new Frame();
+    need("OBrace");
+    while(!pop("CBrace")) {
+      var type = need("Type").string;
+      while(pop("Star")) {
+        type = new Ptr(type);
+      }
+      var member = need("Ident").string;
+      while(pop("OBracket")) {
+        var size = parseExpr();
+        need("CBracket");
+        type = new Arr(type, size);
+      }
+      members.push(type, member);
+      need("Semi");
+    }
+    console.log(members);
+    objInsert(members);
+    return new CObject(ident.string, members);
+  }
+
+  function parseVarDecls() {
+    var baseType = need("Type").string;
+    var decls = [];
+    do {
+      var type = baseType;
+      // pointer modifyer
+      while(pop("Star")) {
+        type = new Ptr(type);
+      }
+      var ident = need("Ident");
+      // array modifyer
+      while(pop("OBracket")) {
+        var size = parseExpr();
+        need("CBracket");
+        type = new Arr(type, size);
+      }
+      var value = pop("Assign") ? parseExpr() : undefined;
+      varInsert(ident.string, -currentFrame.size);
+      var v = currentFrame.push(type, ident.string);
+      decls.push(new VarDecl(type, ident.string, v.offset, value));
+    }
+    while(pop("Comma"));
+    need("Semi");
+    return decls;
+  }
+
+  function parseFunctionDecl() {
+    currentFrame = new Frame();
+    var type = need("Type").string;
+    var name = need("Ident").string;
     var params = parseList("OParen", "CParen", "Comma", () => {
       var type = need("Type").string;
       var name = need("Ident").string;
-      localLocations.insertVar(name, frame.size);
-      frame.push(type, name);
+      varInsert(name, currentFrame.size);
+      currentFrame.push(type, name);
       return new Param(type, name);
     });
 
-    var body = parseScope(localLocations);
+    var body = parseScope();
     if(!(body[body.length-1] instanceof Return)) {
       body.push(new Line(new Return()));
     }
-    return new CFunction(type, params, body, frame);
+
+    var decl = new CFunction(type, params, body, currentFrame);
+    functions[name] = decl;
+    return decl;
   }
 
   while(currentToken != tokens.length) {
-    parseDeclarations(
-      // new variable
-      (type, name, value, position) => {
-        if(globalLocations[name]) {
-          throw new ParseError(`Variable ${name} was already declared before this point:\n${positionToString(position)}`);
-        }
-        else {
-          globalLocations.insertVar(name, globals.size);
-        }
-        var v = globals.push(type, name);
-        if(value) {
-          ast = new Bop("assign", new Var(v.name, v.offset), value);
-        }
-      },
-      // new function
-      (name, definition, position) => {
-        functions[name] = definition;
-      },
-      globalLocations.lookupVar
-    );
+    currentFrame = globals;
+    if(peek("Struct")) {
+      parseStructDecl();
+    }
+    else if(peekPattern("Type", () => { while(pop("Star")){} }, "Ident", "OParen")) {
+      parseFunctionDecl();
+    }
+    else {
+      parseVarDecls();
+    }
   }
   return { "functions": functions, "globals": globals };
 }

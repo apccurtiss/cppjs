@@ -24,7 +24,10 @@ var symbols = [
   new Symbol("CParen", /^\)/),
   new Symbol("OBrace", /^{/),
   new Symbol("CBrace", /^}/),
+  new Symbol("OBracket", /^\[/),
+  new Symbol("CBracket", /^\]/),
   new Symbol("Semi", /^;/),
+  new Symbol("Dot", /^\./),
   new Symbol("Comma", /^,/),
   new Symbol("Question",/^\?/),
   new Symbol("Colon",/^:/),
@@ -77,6 +80,7 @@ var symbols = [
   new Symbol("Type",/^(double|float|long double)\b/),
   new Symbol("Type",/^(int|long|short|long int|short int)\b/),
   new Symbol("Type",/^char\b/),
+  new Symbol("Struct",/^struct\b/),
 
   // names
   new Symbol("Ident", /^[-a-zA-Z_][-a-zA-Z0-9_]*/),
@@ -90,7 +94,7 @@ var symbols = [
   new Symbol("Whitespace", /^\s+/),
 ]
 
-function parse_token(code, position) {
+function parseToken(code, position) {
   var m;
   for(var i = 0; i < symbols.length; i++) {
     if(m = code.match(symbols[i].pattern)) {
@@ -100,7 +104,7 @@ function parse_token(code, position) {
   throw new TokenError("Unknown token", position);
 }
 
-function parse(code) {
+function tokenize(code) {
   var tokens = [];
   var lines = code.split('\n');
   var index = 0;
@@ -109,7 +113,7 @@ function parse(code) {
     var position = 0;
     var line = lines[i];
     do {
-      var token = parse_token(line.substring(position), new Position(i+1, line, position+1, index+1));
+      var token = parseToken(line.substring(position), new Position(i+1, line, position+1, index+1));
       if(token.type != "Whitespace") {
         tokens.push(token);
       }
@@ -121,4 +125,4 @@ function parse(code) {
   return tokens;
 }
 
-module.exports = parse
+module.exports = tokenize;
