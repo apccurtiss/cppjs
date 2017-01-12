@@ -1,8 +1,8 @@
 var baseSizes = {
-  "int": 8,
-  "float": 8,
+  "int": 4,
+  "float": 4,
   "char": 1,
-  "ptr": 8,
+  "ptr": 4,
 };
 
 module.exports = {

@@ -1,2 +1,2 @@
 # c.js
-A C/C++ interperater in Javascript. For... reasons.
+A C/C++ interpreter in Javascript. For... reasons.
