@@ -71,7 +71,7 @@ Memory = function(initial_size) {
   }
   
   this.write = function (value, address, size, typeflag) {
-    if (address > this.size or address <= 0) {
+    if (address > this.size || address <= 0) {
       throw new Segfault;
     }
     var ret = undefined;
@@ -122,7 +122,7 @@ Memory = function(initial_size) {
 }
 
 module.exports = {
-  memory: Memory,
+  Memory: Memory,
   signed: "signed",
   unsigned: "unsigned",
   float: "float"
