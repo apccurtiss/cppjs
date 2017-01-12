@@ -36,6 +36,7 @@ Scope = function() {
   this.vars = {};
 }
 
+FramePointer = function() {};
 Location = function(offset, type, name) { this.offset = offset; this.type = type; this.name = name; };
 CObject = function(name, frame) { this.name = name; this.frame = frame; };
 CFunction = function(type, params, body, frame) { this.type = type; this.params = params; this.body = body; this.frame = frame; };
@@ -103,9 +104,13 @@ module.exports = function(tokens) {
     if(scopes[scopes.length-1].vars[ident.string] != undefined) {
       throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`)
     }
-    var loc = new Location(position, type, ident.string);
-    loc.relative = currentFrame != globals;
-    scopes[scopes.length-1].vars[ident.string] = loc;
+    loc = new Val("int", position);
+    if(currentFrame != globals) {
+      loc = new Bop("Plus", loc, new FramePointer());
+    }
+    var ret = new Location(loc, type, ident.string);
+    scopes[scopes.length-1].vars[ident.string] = ret;
+    return ret;
   }
   function objInsert(ident, members) {
     if(scopes[scopes.length-1].objectDefinitions[ident.string] != undefined) {
@@ -290,16 +295,31 @@ module.exports = function(tokens) {
       }
       return helper();
     }
+/*var test4 = `
+struct node {
+  struct node *next;
+}
+int main() {
+  struct node a, b, c, *current;
+  a.next = &b;
+  b.next = &c;
+  c.next = 0;
 
+  current = &a;
+  while(current != 0) {
+    current = (*current).next;
+  }
+}`;*/
     function level1() {
       function helper(acc) {
         if(pop("Dot")) {
-          var name = need("Ident").string;
-          var field = objLookup(varLookup(acc.name).type.name).get(name);
-          if(acc instanceof Location) {
-            return new Location(acc.offset + field.offset, field.type, `${acc.name}.${name}`);
+          var objType = Types.typeof(acc).name;
+          var fieldName = need("Ident").string;
+          var field = objLookup(objType).get(fieldName);
+          if(field) {
+            return new Location(new Bop("Plus", acc.offset, new Val("int", field.offset)), field.type, `${acc.name}.${fieldName}`);
           }
-          throw new ParseError(`${acc} has no member ${name}`);
+          throw new ParseError(`An object of type '${objType}' has no member ${fieldName}`);
         }
         else {
           return acc;
@@ -321,10 +341,15 @@ module.exports = function(tokens) {
         }
         // Variable
         else {
-          return varLookup(a.string);
+          var v = varLookup(a.string);
+          if(v == undefined) {
+            throw new ParseError(`Variable '${a.string}' has not been declared before it was used:\n${positionToString(a.position)}`);
+          }
+          return v;
         }
       }
       else if(pop("OParen")) {
+        console.log(p);
         var p = parseExpr();
         need("CParen");
         return p;
