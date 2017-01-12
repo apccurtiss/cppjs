@@ -1,21 +1,3 @@
-var typeSizes = {
-  "int": 8,
-  "float": 8,
-  "char": 1,
-};
-
-function sizeof(t) {
-  if(t instanceof Arr) {
-    return sizeof(t.type) * t.size;
-  }
-  else if(t instanceof Ptr) {
-    return 8;
-  }
-  else {
-    return typeSizes[t];
-  }
-}
-
 // logical line
 const Line = function(ast, start, end) { this.ast = ast; this.start = start; this.end = end; };
 
@@ -24,46 +6,32 @@ Frame = function() {
   this.size = 0;
   this.vars = [];
   MemoryCell = function(type, name, offset) { this.type = type; this.name = name; this.offset = offset; };
-  this.push = function(type, name) {
+  this.push = function(type, name, size) {
     var v = new MemoryCell(type, name, this.size);
     this.vars.push(v);
-    this.size += sizeof(type);
+    this.size += size;
     return v;
   }
 }
 
+Members = function() {
+  this.size = 0;
+  this.vars = {};
+  MemoryCell = function(type, offset) { this.type = type; this.offset = offset; };
+  this.push = function(type, name, size) {
+    this.vars[name] = new MemoryCell(type, this.size);
+    this.size += size;
+    return this.vars[name];
+  }
+  this.get = function(name) {
+    return this.vars[name];
+  }
+}
+
 Scope = function() {
-  var typedefs = {};
-  var objectDefinitions = {};
-  var vars = {};
-  this.get = function() { return vars; };
-  this.insertVar = function(name, loc) {
-    vars[name] = loc;
-  }
-  this.insertObjDef = function(name, obj) {
-    objectDefinitions[name] = obj;
-  }
-  this.lookupVar = function(ident) {
-    var loc = vars[ident.string];
-    if(loc == undefined) {
-      throw new ParseError(`Variable ${ident.string} not declared before this point:\n${positionToString(ident.position)}`);
-    }
-    return new Var(ident.string, loc);
-  }
-  this.lookupObjDef = function(name, obj) {
-    var obj = objectDefinitions[ident.string];
-    if(!obj) {
-      throw new ParseError(`"${ident.string}" not defined before this point:\n${positionToString(ident.position)}`);
-    }
-    return obj;
-  }
-  this.clone = function() {
-    var clone = new Scope();
-    for(element in vars) {
-      clone.insertVar(element, vars[element]);
-    }
-    return clone;
-  }
+  this.typedefs = {};
+  this.objectDefinitions = {};
+  this.vars = {};
 }
 CObject = function(name, frame) { this.name = name; this.frame = frame; };
 CFunction = function(type, params, body, frame) { this.type = type; this.params = params; this.body = body; this.frame = frame; };
@@ -71,12 +39,13 @@ Param = function(type, name) { this.type = type; this.name = name; };
 Struct = function(size, members) { this.size = size; this.members = members; };
 VarDecl = function(type, name, position, val) { this.type = type; this.name = name; this.position = position; this.val = val; };
 FuncDecl = function(type, name, params, body) { this.name = name; this.val = val; };
-Var = function(name, offset) { this.name = name; this.offset = offset; };
+Var = function(type, name, offset) { this.type = type; this.name = name; this.offset = offset; };
 Call = function(name, args) { this.name = name; this.args = args; };
 Val = function(type, value) { this.type = type; this.value = value; };
 Bop = function(bop, e1, e2) { this.bop = bop; this.e1 = e1; this.e2 = e2; };
 Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; };
 Arr = function(type, size) { this.type = type; this.size = size; };
+Obj = function(name) { this.name = name; };
 Ptr = function(type) { this.type = type; };
 Return = function(value) { this.value = value; };
 // Jumps and Redirects are the same, only jumps are associated with some bit of code (if statement, goto) while redirects are not (end of for or while loop, etc)
@@ -108,28 +77,41 @@ module.exports = function(tokens) {
   var functions = {};
   var currentToken = 0;
   function pushScope() {
-    scopes.push(scopes[scopes.length-1].clone());
+    scopes.push(new Scope());
   }
   function popScope() {
     scopes.pop();
   }
-  function varLookup(ident) {
+  function varLookup(name) {
     for(var i = scopes.length-1; i >= 0; i--) {
-      try {
-        return scopes[i].lookupVar(ident);
+      var v;
+      if(v = scopes[i].vars[name]) {
+        return v;
       }
-      catch(err) {
-        console.log("Got error: " + err.message);
-        continue;
-      };
     }
-    throw new ParseError(`Variable ${ident.string} not declared before this point:\n${positionToString(ident.position)}`);
+    return undefined;
   }
-  function varInsert(name, position) {
-    scopes[scopes.length-1].insertVar(name, position);
+  function objLookup(name) {
+    for(var i = scopes.length-1; i >= 0; i--) {
+      var v;
+      if(v = scopes[i].objectDefinitions[name]) {
+        return v;
+      }
+    }
+    return undefined;
   }
-  function objInsert(name, members) {
-    scopes[scopes.length-1].insertObjDef(name, members);
+  function varInsert(type, ident, position) {
+    if(scopes[scopes.length-1].vars[ident.string] != undefined) {
+      throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`)
+    }
+    scopes[scopes.length-1].vars[ident.string] = new Var(type, ident.string, position);
+  }
+  function objInsert(ident, members) {
+    console.log(members);
+    if(scopes[scopes.length-1].objectDefinitions[ident.string] != undefined) {
+      throw new ParseError(`Object ${ident.string} already declared!`)
+    }
+    scopes[scopes.length-1].objectDefinitions[ident.string] = members;
   }
 
   function nextToken() {
@@ -140,7 +122,21 @@ module.exports = function(tokens) {
   }
 
   function peek(type) {
-    return nextToken().type == type;
+    if(type instanceof Function) {
+      var startToken = currentToken;
+      var result;
+      try {
+        result = type();
+      }
+      catch(err) {
+        result = false;
+      }
+      currentToken = startToken;
+      return result;
+    }
+    else {
+      return nextToken().type == type;
+    }
   }
 
   function pop(type) {
@@ -285,10 +281,27 @@ module.exports = function(tokens) {
           return new Uop("Addr", helper());
         }
         else {
-          return atom();
+          return level1();
         }
       }
       return helper();
+    }
+
+    function level1() {
+      function helper(acc) {
+        if(pop("Dot")) {
+          var name = need("Ident").string;
+          var field = objLookup(varLookup(acc.name).type.name).get(name);
+          if(acc instanceof Var) {
+            return new Var(field.type, `${acc.name}.${name}`, acc.offset + field.offset);
+          }
+          throw new ParseError(`${acc} has no member ${name}`);
+        }
+        else {
+          return acc;
+        }
+      }
+      return helper(atom());
     }
 
     function atom() {
@@ -304,7 +317,7 @@ module.exports = function(tokens) {
         }
         // Variable
         else {
-          return varLookup(a);
+          return varLookup(a.string);
         }
       }
       else if(pop("OParen")) {
@@ -313,7 +326,6 @@ module.exports = function(tokens) {
         return p;
       }
       else {
-        console.log(nextToken().position);
         throw new ParseError(`Unexpected token of type '${nextToken().type}':\n${positionToString(nextToken().position)}`);
       }
     }
@@ -337,7 +349,7 @@ module.exports = function(tokens) {
         need("Semi", "A line should have ended with a semicolon before this point");
       }
       // variable declaration
-      else if(peek("Type")) {
+      else if(peek(parseType)) {
         ast = parseVarDecls();
       }
       // normal expression
@@ -388,13 +400,49 @@ module.exports = function(tokens) {
     return body;
   }
 
+  function parseType() {
+    if(pop("Struct")) {
+      return new Obj(need("Ident").string);
+    }
+    else {
+      return need("Type").string;
+    }
+  }
+
+  var baseSizes = {
+    "int": 8,
+    "float": 8,
+    "char": 1,
+    "ptr": 8,
+  };
+
+  function sizeof(t) {
+    if(t instanceof Arr) {
+      if(t.size) {
+        return sizeof(t.type) * t.size;
+      }
+      else {
+        return undefined;
+      }
+    }
+    else if(t instanceof Ptr) {
+      return baseSizes["ptr"];
+    }
+    else if(t instanceof Obj) {
+      return objLookup(t.name).size;
+    }
+    else {
+      return baseSizes[t];
+    }
+  }
+
   function parseStructDecl() {
     need("Struct");
     var ident = pop("Ident");
-    var members = new Frame();
+    var members = new Members();
     need("OBrace");
     while(!pop("CBrace")) {
-      var type = need("Type").string;
+      var type = parseType();
       while(pop("Star")) {
         type = new Ptr(type);
       }
@@ -404,16 +452,15 @@ module.exports = function(tokens) {
         need("CBracket");
         type = new Arr(type, size);
       }
-      members.push(type, member);
+      members.push(type, member, sizeof(type));
       need("Semi");
     }
-    console.log(members);
-    objInsert(members);
+    objInsert(ident, members);
     return new CObject(ident.string, members);
   }
 
   function parseVarDecls() {
-    var baseType = need("Type").string;
+    var baseType = parseType();
     var decls = [];
     do {
       var type = baseType;
@@ -429,8 +476,8 @@ module.exports = function(tokens) {
         type = new Arr(type, size);
       }
       var value = pop("Assign") ? parseExpr() : undefined;
-      varInsert(ident.string, -currentFrame.size);
-      var v = currentFrame.push(type, ident.string);
+      varInsert(type, ident, currentFrame.size);
+      var v = currentFrame.push(type, ident.string, sizeof(type));
       decls.push(new VarDecl(type, ident.string, v.offset, value));
     }
     while(pop("Comma"));
@@ -440,14 +487,14 @@ module.exports = function(tokens) {
 
   function parseFunctionDecl() {
     currentFrame = new Frame();
-    var type = need("Type").string;
+    var type = parseType();
     var name = need("Ident").string;
     var params = parseList("OParen", "CParen", "Comma", () => {
       var type = need("Type").string;
-      var name = need("Ident").string;
-      varInsert(name, currentFrame.size);
-      currentFrame.push(type, name);
-      return new Param(type, name);
+      var ident = need("Ident");
+      varInsert(type, ident, currentFrame.size);
+      currentFrame.push(type, ident.string, sizeof(type));
+      return new Param(type, ident.string);
     });
 
     var body = parseScope();
