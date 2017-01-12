@@ -1,3 +1,5 @@
+var Types = require("./types.js");
+
 // logical line
 const Line = function(ast, start, end) { this.ast = ast; this.start = start; this.end = end; };
 
@@ -33,6 +35,8 @@ Scope = function() {
   this.objectDefinitions = {};
   this.vars = {};
 }
+
+Location = function(offset, type, name) { this.offset = offset; this.type = type; this.name = name; };
 CObject = function(name, frame) { this.name = name; this.frame = frame; };
 CFunction = function(type, params, body, frame) { this.type = type; this.params = params; this.body = body; this.frame = frame; };
 Param = function(type, name) { this.type = type; this.name = name; };
@@ -44,13 +48,8 @@ Call = function(name, args) { this.name = name; this.args = args; };
 Val = function(type, value) { this.type = type; this.value = value; };
 Bop = function(bop, e1, e2) { this.bop = bop; this.e1 = e1; this.e2 = e2; };
 Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; };
-Arr = function(type, size) { this.type = type; this.size = size; };
-Obj = function(name) { this.name = name; };
-Ptr = function(type) { this.type = type; };
 Return = function(value) { this.value = value; };
-// Jumps and Redirects are the same, only jumps are associated with some bit of code (if statement, goto) while redirects are not (end of for or while loop, etc)
 Jump = function(distance, cond) { this.distance = distance; this.cond = cond; };
-Redirect = function(distance, cond) { this.distance = distance; this.cond = cond; };
 // TODO(alex) replace with more generic 'fd' type
 Print = function(text) { this.text = text; };
 
@@ -72,7 +71,7 @@ function positionToString(position) {
 
 module.exports = function(tokens) {
   var scopes = [new Scope()];
-  var globals = new Frame;
+  var globals = new Frame();
   var currentFrame;
   var functions = {};
   var currentToken = 0;
@@ -104,10 +103,11 @@ module.exports = function(tokens) {
     if(scopes[scopes.length-1].vars[ident.string] != undefined) {
       throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`)
     }
-    scopes[scopes.length-1].vars[ident.string] = new Var(type, ident.string, position);
+    var loc = new Location(position, type, ident.string);
+    loc.relative = currentFrame != globals;
+    scopes[scopes.length-1].vars[ident.string] = loc;
   }
   function objInsert(ident, members) {
-    console.log(members);
     if(scopes[scopes.length-1].objectDefinitions[ident.string] != undefined) {
       throw new ParseError(`Object ${ident.string} already declared!`)
     }
@@ -153,17 +153,6 @@ module.exports = function(tokens) {
       throw new ParseError((message || `Expected type '${type}' but got '${nextToken().type}'`) + "\n" + positionToString(nextToken().position));
     }
     return tok;
-  }
-
-  function tryToParse(parseFunction) {
-    var startToken = currentToken;
-    try {
-      return parseFunction();
-    }
-    catch(err) {
-      currentToken = startToken;
-      return false;
-    }
   }
 
   function peekPattern() {
@@ -217,7 +206,22 @@ module.exports = function(tokens) {
     function level14() {
       function helper(acc) {
         if(pop("Assign")) {
-          return helper(new Bop("Assign", acc, level6()));
+          return helper(new Bop("Assign", acc, level7()));
+        }
+        else {
+          return acc;
+        }
+      }
+      return helper(level7());
+    }
+
+    function level7() {
+      function helper(acc) {
+        if(pop("Eq")) {
+          return helper(new Bop("Eq", acc, level6()));
+        }
+        else if(pop("Neq")) {
+          return helper(new Bop("Neq", acc, level6()));
         }
         else {
           return acc;
@@ -277,7 +281,7 @@ module.exports = function(tokens) {
         if(pop("Star")) {
           return new Uop("Deref", helper());
         }
-        else if(pop("And")) {
+        else if(pop("SingleAnd")) {
           return new Uop("Addr", helper());
         }
         else {
@@ -292,8 +296,8 @@ module.exports = function(tokens) {
         if(pop("Dot")) {
           var name = need("Ident").string;
           var field = objLookup(varLookup(acc.name).type.name).get(name);
-          if(acc instanceof Var) {
-            return new Var(field.type, `${acc.name}.${name}`, acc.offset + field.offset);
+          if(acc instanceof Location) {
+            return new Location(acc.offset + field.offset, field.type, `${acc.name}.${name}`);
           }
           throw new ParseError(`${acc} has no member ${name}`);
         }
@@ -341,24 +345,22 @@ module.exports = function(tokens) {
   }
 
   function parseLogicalLine() {
-    var ret = positionOf(() => {
-      var ast;
-      // return statement
-      if(pop("Return")) {
-        ast = [new Return(parseExpr())];
-        need("Semi", "A line should have ended with a semicolon before this point");
-      }
-      // variable declaration
-      else if(peek(parseType)) {
-        ast = parseVarDecls();
-      }
-      // normal expression
-      else {
-        ast = [parseExpr()];
-        need("Semi", "A line should have ended with a semicolon before this point");
-      }
-      return ast;
-    });
+    var start = nextToken().position.codeIndex;
+    var ret;
+    // return statement
+    if(pop("Return")) {
+      ret = [new Line(new Return(parseExpr()), start, nextToken().position.codeIndex)];
+      need("Semi", "A line should have ended with a semicolon before this point");
+    }
+    // variable declaration
+    else if(peek(parseType)) {
+      ret = parseVarDecls();
+    }
+    // normal expression
+    else {
+      ret = [new Line(parseExpr(), start, nextToken().position.codeIndex)];
+      need("Semi", "A line should have ended with a semicolon before this point");
+    }
     return ret;
   }
 
@@ -379,7 +381,14 @@ module.exports = function(tokens) {
       var body = parseLogicalBlock();
       // modify the condition to jump to end of the body if it's not met
       cond.ast = new Jump(body.length + 3, new Uop("Not", cond.ast));
-      return [doFirst].concat([cond]).concat(body).concat([inc]).concat([new Redirect(-body.length - 2)]);
+      return [doFirst].concat([cond]).concat(body).concat([inc]).concat(new Line(new Jump(-body.length - 2)));
+    }
+    else if(pop("While")) {
+      var cond = needPattern("OParen", expression, "CParen");
+      var body = parseLogicalBlock();
+      // modify the condition to jump to end of the body if it's not met
+      cond.ast = new Jump(body.length + 2, new Uop("Not", cond.ast));
+      return [cond].concat(body).concat(new Line(new Jump(-body.length - 1)));
     }
     else if(peek("OBrace")) {
       return parseScope();
@@ -402,22 +411,15 @@ module.exports = function(tokens) {
 
   function parseType() {
     if(pop("Struct")) {
-      return new Obj(need("Ident").string);
+      return new Types.Obj(need("Ident").string);
     }
     else {
       return need("Type").string;
     }
   }
 
-  var baseSizes = {
-    "int": 8,
-    "float": 8,
-    "char": 1,
-    "ptr": 8,
-  };
-
   function sizeof(t) {
-    if(t instanceof Arr) {
+    if(t instanceof Types.Arr) {
       if(t.size) {
         return sizeof(t.type) * t.size;
       }
@@ -425,14 +427,14 @@ module.exports = function(tokens) {
         return undefined;
       }
     }
-    else if(t instanceof Ptr) {
-      return baseSizes["ptr"];
+    else if(t instanceof Types.Ptr) {
+      return Types.sizeof("ptr");
     }
-    else if(t instanceof Obj) {
+    else if(t instanceof Types.Obj) {
       return objLookup(t.name).size;
     }
     else {
-      return baseSizes[t];
+      return Types.sizeof(t);
     }
   }
 
@@ -444,13 +446,13 @@ module.exports = function(tokens) {
     while(!pop("CBrace")) {
       var type = parseType();
       while(pop("Star")) {
-        type = new Ptr(type);
+        type = new Types.Ptr(type);
       }
       var member = need("Ident").string;
       while(pop("OBracket")) {
         var size = parseExpr();
         need("CBracket");
-        type = new Arr(type, size);
+        type = new Types.Arr(type, size);
       }
       members.push(type, member, sizeof(type));
       need("Semi");
@@ -460,27 +462,33 @@ module.exports = function(tokens) {
   }
 
   function parseVarDecls() {
+    var start = nextToken().position.codeIndex;
     var baseType = parseType();
     var decls = [];
-    do {
+    while(true) {
       var type = baseType;
       // pointer modifyer
       while(pop("Star")) {
-        type = new Ptr(type);
+        type = new Types.Ptr(type);
       }
       var ident = need("Ident");
       // array modifyer
       while(pop("OBracket")) {
         var size = parseExpr();
         need("CBracket");
-        type = new Arr(type, size);
+        type = new Types.Arr(type, size);
       }
       var value = pop("Assign") ? parseExpr() : undefined;
       varInsert(type, ident, currentFrame.size);
       var v = currentFrame.push(type, ident.string, sizeof(type));
-      decls.push(new VarDecl(type, ident.string, v.offset, value));
+      decls.push(new Line(new VarDecl(type, ident.string, v.offset, value), start, nextToken().position.codeIndex));
+      if(pop("Comma")) {
+        start = nextToken().position.codeIndex
+      }
+      else {
+        break;
+      }
     }
-    while(pop("Comma"));
     need("Semi");
     return decls;
   }
