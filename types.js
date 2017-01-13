@@ -20,7 +20,7 @@ module.exports = {
       }
     }
     else if (ast instanceof Bop) {
-
+      throw "Unimplemented";
     }
     else if(ast instanceof Location) {
       return ast.type;
