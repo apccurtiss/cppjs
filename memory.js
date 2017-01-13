@@ -12,14 +12,19 @@ function Segfault(message, position) {
 Segfault.prototype = Object.create(Error.prototype);
 Segfault.prototype.constructor = Segfault;
 
-Memory = function(initial_size) {
+function Memory (initial_size, initial_state) {
   if (initial_size == undefined) {
     this.size = 128;
   } else {
     this.size = initial_size;
   }
   
-  this.data = new ArrayBuffer(this.size);
+  if (initial_state == undefined) {
+    this.data = new ArrayBuffer(this.size);
+  } else {
+    this.data = initial_state.slice(0,this.size);
+  }
+  
   this.read = function (address, size, typeflag) {
     if (address > this.size || address <= 0) {
       throw new Segfault;
@@ -74,7 +79,7 @@ Memory = function(initial_size) {
     if (address > this.size || address <= 0) {
       throw new Segfault;
     }
-    var ret = undefined;
+    var modified = this.data.slice(0)
     //set boolean flags here for ease of coding later on
     var float = false;
     if (typeflag == 'float') {
@@ -89,36 +94,65 @@ Memory = function(initial_size) {
       if (float) {
         throw new MemoryError('Floating point numbers may not have a size of 1 byte');
       } else if (signed) {
-        (new Int8Array(this.data, address, 1))[0] = value;
+        (new Int8Array(modified, address, 1))[0] = value;
       } else {
-        (new Uint8Array(this.data, address, 1))[0] = value;
+        (new Uint8Array(modified, address, 1))[0] = value;
       }
     } else if (size == 2) {
       if (float) {
         throw new MemoryError('Floating point numbers may not have a size of 2 bytes');
       } else if (signed) {
-        (new Int16Array(this.data, address, 1))[0] = value;
+        (new Int16Array(modified, address, 1))[0] = value;
       } else {
-        (new Uint16Array(this.data, address, 1))[0] = value;
+        (new Uint16Array(modified, address, 1))[0] = value;
       }
     } else if (size == 4) {
       if (float) {
-        (new Float32Array(this.data, address, 1))[0] = value;
+        (new Float32Array(modified, address, 1))[0] = value;
       } else if (signed) {
-        (new Int32Array(this.data, address, 1))[0] = value;
+        (new Int32Array(modified, address, 1))[0] = value;
       } else {
-        (new Uint32Array(this.data, address, 1))[0] = value;
+        (new Uint32Array(modified, address, 1))[0] = value;
       }
     } else if (size == 8) {
       if (float) {
-        (new Float64Array(this.data, address, 1))[0] = value;
+        (new Float64Array(modified, address, 1))[0] = value;
       } else {
         throw new MemoryError('8 byte numbers must be floats');
       }
     }
+    return new Memory(this.size, modified);
   }
   
-  return
+  this.resize = function (newsize) {
+    if (newsize < this.size) {
+      throw new MemoryError("You cannot resize memory to be smaller");
+    }
+    return new Memory(this.size, this.data);
+  }
+
+}
+
+function Heap(initial_data, initial_allocations) {
+  if (initial_data == undefined) {
+    this.memory = Memory(128);
+  } else {
+    this.memory = initial_data.slice(initial_size);
+  }
+  
+  if (initial_allocations == undefined) {
+    this.allocations = [];
+  } else {
+    this.allocations = initial_allocations;
+  }
+  
+  this.read() = function (address, size, typeflag) {
+    return this.memory.read(address, size, typeflag);
+  }
+  
+  this.write = function (value, address, size, typeflag) {
+    return new Heap(this.memory.write(value, address, size, typeflag), this.allocations);
+  }
 }
 
 module.exports = {
