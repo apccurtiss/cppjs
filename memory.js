@@ -1,3 +1,5 @@
+Types = require("./types.js")
+
 function MemoryError(message, position) {
   this.name = 'MemoryError';
   this.message = message || 'Memory error occured';
@@ -218,7 +220,7 @@ function MemoryCell(offset, type, name) {
   this.offset = offset;
   this.type = type;
   this.name = name;
-};
+}
 
 function AbstractFrame(name) {
   this.name = name;
@@ -236,7 +238,7 @@ function StackFrame(abstract, prev) {
   this.prev = prev;
   if (this.prev == undefined) {
     this.startaddr == 8;
-    this.memory = Memory(128);
+    this.memory = new Memory(128);
   } else {
     this.startaddr = (prev.startaddr + prev.size + 8) % 8;
     this.memory = prev.memory;
@@ -249,11 +251,13 @@ function StackFrame(abstract, prev) {
   }
   
   this.read = function(address, size, typeflag) {
-    return this.memory.read(address + this.startaddr, size, typeflag);
+    return this.memory.read(address, size, typeflag);
   }
   
-  this.write = function(value, addr, size, typeflag) {
-    return new StackFrame(this.size, this.memory.write(value, address, size, typeflag), this.n, this.prev);
+  this.write = function(value, address, size, typeflag) {
+    var mod = new StackFrame(this.abstract, this.prev);
+    mod.memory = this.memory.write(value, address, size, typeflag);
+    return mod;
   }
   
   this.name = function() {
@@ -263,21 +267,23 @@ function StackFrame(abstract, prev) {
     return this.abstract.name + " at " + this.startaddr;
   }
   
-  this.trace = function(objdef) {
+  this.trace = function(objects) {
     var trace = []
     if (this.prev != undefined) {
       trace = this.prev.trace();
     }
     var curr = new Object;
+    curr.values = {};
     for (var j = 0; j < this.abstract.vars.length; j++) {
       if (this.abstract.vars[j].type instanceof Types.Obj) {
+        objdef = objects[this.abstract.vars[j].type.name]
         var members = {};
         for (var k in objdef.vars) {
-          members[k] = stack.read(this.startaddr + this.abstract.vars[j].offset + objdef.vars[k].offset, 4, memory.unsigned);
+          members[k] = this.memory.read(this.startaddr + this.abstract.vars[j].offset + objdef.vars[k].offset, 4, "unsigned");
         }
         curr.values[this.abstract.vars[j].name] = members;
       } else {
-        curr.values[this.abstract.vars[j].name] = stack.read(this.startaddr + this.abstract.vars[j].offset, 4, memory.unsigned);
+        curr.values[this.abstract.vars[j].name] = this.memory.read(this.startaddr + this.abstract.vars[j].offset, 4, "unsigned");
       }
     }
     trace.push(curr);
@@ -289,8 +295,8 @@ module.exports = {
   Memory: Memory,
   Heap: Heap,
   AbstractFrame: AbstractFrame,
+  MemoryCell: MemoryCell,
   StackFrame: StackFrame,
-  CreateStack: CreateStack,
   signed: "signed",
   unsigned: "unsigned",
   float: "float"

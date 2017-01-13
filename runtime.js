@@ -33,16 +33,17 @@ module.exports = function(parsedCode) {
     var globalsPointer = 8;
 
     var globals = parsedCode.globals;
+    var currentFrame = new memory.StackFrame(globals);
     var globalData = parsedCode.globalData;
     for (var i = 0; i < globalData.length; i++) {
         if (globalData[i].ast.val != undefined) {
             var val = eval(globalData[i].ast.val);
-            stack = stack.write(val.value, globalsPointer + globalData[i].ast.position, 4, memory.signed);
+            currentFrame = currentFrame.write(val.value, globalsPointer + globalData[i].ast.position, 4, memory.signed);
         }
     }
     //stackPointer = globalsPointer + globals.size;
     
-    var currentFrame = new memory.StackFrame(globals);
+    
 
     // instruction setup
     var currentInstruction = 0;
@@ -73,13 +74,13 @@ module.exports = function(parsedCode) {
     this.dumpGlobals = function() {
         var dump = {};
         for (var i = 0; i < globals.vars.length; i++) {
-            dump[globals.vars[i].name] = stack.read(globalsPointer + globals.vars[i].offset, 4, memory.unsigned);
+            dump[globals.vars[i].name] = currentFrame.read(globalsPointer + globals.vars[i].offset, 4, memory.unsigned);
         }
         return dump;
     }
 
     this.dumpStack = function() {
-        return currentFrame.trace();
+        return currentFrame.trace(parsedCode.globalObjects);
     }
 
     var Node = function(type, name, position) {
@@ -103,7 +104,7 @@ module.exports = function(parsedCode) {
             var object = parsedCode.globalObjects[nodes[i].type];
             for (v in object.vars) {
                 for (var j = 0; j < nodes.length; j++) {
-                    if (nodes[j].position == stack.read(nodes[i].position + object.vars[v].offset, 4, memory.unsigned)) {
+                    if (nodes[j].position == currentFrame.read(nodes[i].position + object.vars[v].offset, 4, memory.unsigned)) {
                         edges.push(new Edge(nodes[i].position, nodes[j].position));
                         break;
                     }
@@ -123,7 +124,7 @@ module.exports = function(parsedCode) {
               base = globalsPointer;
             }
             else if(ast.base == "frame") {
-              base = currentFrame().start;
+              base = currentFrame.startaddr;
             }
             else {
               base = eval(ast.base).value;
@@ -137,7 +138,7 @@ module.exports = function(parsedCode) {
     function getValue(ast) {
         if (ast instanceof Address) {
             var loc = resolveLocation(ast);
-            return stack.read(loc, 4, memory.unsigned);
+            return currentFrame.read(loc, 4, memory.unsigned);
         } else if (ast instanceof Val) {
             return ast.value;
         } else {
@@ -150,12 +151,11 @@ module.exports = function(parsedCode) {
         if (ast instanceof Val || ast instanceof Address) {
             return ast;
         } else if (ast instanceof Call) {
-            currentFrame = memory.StackFrame(parsedCode.functions[ast.name].frame, currentFrame)
+            currentFrame = new memory.StackFrame(parsedCode.functions[ast.name].frame, currentFrame)
             for (var i = 0; i < ast.args.length; i++) {
                 var val = eval(ast.args[i]);
-                stack = stack.write(val.value, stackPointer + (4 * i), 4, memory.signed);
+                currentFrame = currentFrame.write(val.value, currentFrame.startaddr + (4 * i), 4, memory.signed);
             }
-            stackPointer += currentFrame().frame.size;
         } else if (ast instanceof Print) {
             console.log(eval(ast.text).value);
             return undefined;
@@ -172,7 +172,7 @@ module.exports = function(parsedCode) {
             var address = resolveLocation(eval(ast.e1));
             var v1 = eval(ast.e2);
             var val = getValue(v1);
-            stack = stack.write(val, address, 4, memory.signed);
+            currentFrame = currentFrame.write(val, address, 4, memory.signed);
           }
           else {
             var v1 = getValue(eval(ast.e1));
@@ -216,10 +216,10 @@ module.exports = function(parsedCode) {
             }
         } else if (ast instanceof Decl) {
             if (ast.type instanceof Types.Obj) {
-                registerObjectLocation(ast.type.name, ast.name, stackPointer - currentFrame().frame.size + ast.position)
+                registerObjectLocation(ast.type.name, ast.name, currentFrame.startaddr - currentFrame.abstract.size + ast.position)
             }
         } else if (ast instanceof FramePointer) {
-            return new Val("int", currentFrame().start);
+            return new Val("int", currentFrame.startaddr);
         } else if (ast instanceof Jump) {
             if (!ast.cond || eval(ast.cond).value) {
                 currentInstruction += ast.distance - 1;

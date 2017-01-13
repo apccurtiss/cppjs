@@ -20,7 +20,7 @@ Members = function() {
   this.vars = {};
   this.push = function(type, name, size) {
     this.size += !(this.size % size) ? 0 : (size - (this.size % size));
-    this.vars[name] = new MemoryCell(this.size, type);
+    this.vars[name] = new memory.MemoryCell(this.size, type);
     this.size += size;
     return this.vars[name];
   }
