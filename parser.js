@@ -1,7 +1,7 @@
 var Types = require("./types.js");
 
 // logical line
-const Line = function(ast, start, end) { this.ast = ast; this.start = start; this.end = end; };
+Line = function(ast, start, end) { this.ast = ast; this.start = start; this.end = end; };
 
 MemoryCell = function(offset, type, name) { this.offset = offset; this.type = type; this.name = name; };
 Frame = function() {
@@ -313,7 +313,7 @@ int main() {
           var fieldName = need("Ident").string;
           var field = objLookup(objType).get(fieldName);
           if(field) {
-            return new Location(new Bop("Plus", acc.offset, new Val("int", field.offset)), field.type, `${acc.name}.${fieldName}`);
+            return new Location(new Bop("Plus", acc, new Val("int", field.offset)), field.type, `${acc.name}.${fieldName}`);
           }
           throw new ParseError(`An object of type '${objType}' has no member ${fieldName}`);
         }
@@ -327,7 +327,7 @@ int main() {
     function atom() {
       var a;
       if(a = pop("LitInt")) {
-        return new Val("Int", parseInt(a.string));
+        return new Val("int", parseInt(a.string));
       }
       else if(a = pop("Ident")) {
         // Function
