@@ -3,25 +3,23 @@ var Types = require("./types.js");
 // logical line
 const Line = function(ast, start, end) { this.ast = ast; this.start = start; this.end = end; };
 
-// Tokens
+MemoryCell = function(offset, type, name) { this.offset = offset; this.type = type; this.name = name; };
 Frame = function() {
   this.size = 0;
   this.vars = [];
-  MemoryCell = function(type, name, offset) { this.type = type; this.name = name; this.offset = offset; };
   this.push = function(type, name, size) {
-    var v = new MemoryCell(type, name, this.size);
-    this.vars.push(v);
+    this.size += !(this.size % size) ? 0 : (size - (this.size % size));
+    this.vars.push(new MemoryCell(this.size, type, name));
     this.size += size;
-    return v;
+    return this.size - size;
   }
 }
-
 Members = function() {
   this.size = 0;
   this.vars = {};
-  MemoryCell = function(type, offset) { this.type = type; this.offset = offset; };
   this.push = function(type, name, size) {
-    this.vars[name] = new MemoryCell(type, this.size);
+    this.size += !(this.size % size) ? 0 : (size - (this.size % size));
+    this.vars[name] = new MemoryCell(this.size, type);
     this.size += size;
     return this.vars[name];
   }
@@ -42,9 +40,7 @@ CObject = function(name, frame) { this.name = name; this.frame = frame; };
 CFunction = function(type, params, body, frame) { this.type = type; this.params = params; this.body = body; this.frame = frame; };
 Param = function(type, name) { this.type = type; this.name = name; };
 Struct = function(size, members) { this.size = size; this.members = members; };
-VarDecl = function(type, name, position, val) { this.type = type; this.name = name; this.position = position; this.val = val; };
-FuncDecl = function(type, name, params, body) { this.name = name; this.val = val; };
-Var = function(type, name, offset) { this.type = type; this.name = name; this.offset = offset; };
+Decl = function(type, name, position, val) { this.type = type; this.name = name; this.position = position; this.val = val; };
 Call = function(name, args) { this.name = name; this.args = args; };
 Val = function(type, value) { this.type = type; this.value = value; };
 Bop = function(bop, e1, e2) { this.bop = bop; this.e1 = e1; this.e2 = e2; };
@@ -349,7 +345,6 @@ int main() {
         }
       }
       else if(pop("OParen")) {
-        console.log(p);
         var p = parseExpr();
         need("CParen");
         return p;
@@ -394,7 +389,7 @@ int main() {
       return positionOf(parseExpr);
     }
     if(pop("If")) {
-      var cond = needPattern("OParen", expression, "CParen");
+      var cond = needPattern("OParen", expression, "CParen")[0];
       var body = parseLogicalBlock();
       // modify the condition to jump to end of the body if it's not met
       cond.ast = new Jump(body.length + 1, new Uop("Not", cond.ast));
@@ -409,7 +404,7 @@ int main() {
       return [doFirst].concat([cond]).concat(body).concat([inc]).concat(new Line(new Jump(-body.length - 2)));
     }
     else if(pop("While")) {
-      var cond = needPattern("OParen", expression, "CParen");
+      var cond = needPattern("OParen", expression, "CParen")[0];
       var body = parseLogicalBlock();
       // modify the condition to jump to end of the body if it's not met
       cond.ast = new Jump(body.length + 2, new Uop("Not", cond.ast));
@@ -504,9 +499,9 @@ int main() {
         type = new Types.Arr(type, size);
       }
       var value = pop("Assign") ? parseExpr() : undefined;
-      varInsert(type, ident, currentFrame.size);
-      var v = currentFrame.push(type, ident.string, sizeof(type));
-      decls.push(new Line(new VarDecl(type, ident.string, v.offset, value), start, nextToken().position.codeIndex));
+      var offset = currentFrame.push(type, ident.string, sizeof(type));
+      varInsert(type, ident, offset);
+      decls.push(new Line(new Decl(type, ident.string, offset, value), start, nextToken().position.codeIndex));
       if(pop("Comma")) {
         start = nextToken().position.codeIndex
       }
@@ -525,8 +520,8 @@ int main() {
     var params = parseList("OParen", "CParen", "Comma", () => {
       var type = need("Type").string;
       var ident = need("Ident");
-      varInsert(type, ident, currentFrame.size);
-      currentFrame.push(type, ident.string, sizeof(type));
+      var offset = currentFrame.push(type, ident.string, sizeof(type));
+      varInsert(type, ident, offset);
       return new Param(type, ident.string);
     });
 
@@ -540,6 +535,7 @@ int main() {
     return decl;
   }
 
+  var globalData = [];
   while(currentToken != tokens.length) {
     currentFrame = globals;
     if(peek("Struct")) {
@@ -549,8 +545,9 @@ int main() {
       parseFunctionDecl();
     }
     else {
-      parseVarDecls();
+      var decls = parseVarDecls();
+      globalData = globalData.concat(decls);
     }
   }
-  return { "functions": functions, "globals": globals };
+  return { functions: functions, globalObjects: scopes[0].objectDefinitions, globals: globals, globalData: globalData };
 }

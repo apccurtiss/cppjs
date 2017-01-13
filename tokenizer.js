@@ -52,14 +52,14 @@ var symbols = [
   new Symbol("Gt", /^>/),
 
   // boolean operators
-  new Symbol("And", /^&&/),
-  new Symbol("Or", /^\|\|/),
+  new Symbol("DoubleAnd", /^&&/),
+  new Symbol("DoubleOr", /^\|\|/),
   new Symbol("Not", /^!/),
 
   // bitwise operators
-  new Symbol("BitOr", /^\|/),
-  new Symbol("BitAnd", /^&/),
-  new Symbol("BitNot", /^~/),
+  new Symbol("SingleOr", /^\|/),
+  new Symbol("SingleAnd", /^&/),
+  new Symbol("Tilda", /^~/),
 
   // assignment
   new Symbol("Assign", /^=/),
