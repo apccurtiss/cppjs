@@ -12,9 +12,48 @@ function Segfault(position, message) {
 Segfault.prototype = Object.create(Error.prototype);
 Segfault.prototype.constructor = Segfault;
 
+function AllocationTable (initial_state) {
+  if (initial_state == undefined) {
+    this.state = [];
+  } else {
+    this.state = initial_state;
+  }
+
+  this.insert = function(key, value) {
+    var i;
+    for(i = 0; i < this.state.length; i++) {
+      if (this.state[i].address > key) {
+        break;
+      }
+    }
+    var before = this.state.slice(0,i);
+    var added = [{address: key, length: value}];
+    var after = this.state.slice(i);
+    return new AllocationTable(before.concat(added).concat(after));
+  }
+
+  this.remove = function(key) {
+    var i = 0;
+    for (i = 0; i < this.state.length; i++) {
+      if (this.state[i].address == key) {
+        break;
+      }
+    }
+
+    if (i == 0) {
+      throw new Segfault;
+    }
+
+    var removed = this.state.splice(i,1);
+    return new AllocationTable(removed);
+  }
+}
+
 function Memory (initial_size, initial_state) {
   if (initial_size == undefined) {
     this.size = 128;
+  } else if (initial_size < 8) {
+    throw new MemoryError('Memory Objects must have a size of 8 or more.')
   } else {
     this.size = initial_size;
   }
@@ -135,28 +174,49 @@ function Memory (initial_size, initial_state) {
 
 function Heap(initial_data, initial_allocations) {
   if (initial_data == undefined) {
-    this.memory = Memory(128);
+    this.memory = new Memory(128);
   } else {
-    this.memory = initial_data.slice(initial_size);
+    this.memory = initial_data;
   }
 
   if (initial_allocations == undefined) {
-    this.allocations = [];
+    this.allocations = new AllocationTable();
   } else {
     this.allocations = initial_allocations;
   }
-
-  this.read() = function (address, size, typeflag) {
+  
+  this.read = function (address, size, typeflag) {
     return this.memory.read(address, size, typeflag);
   }
 
   this.write = function (value, address, size, typeflag) {
     return new Heap(this.memory.write(value, address, size, typeflag), this.allocations);
   }
+
+  this.malloc = function (size) {
+    var last = 8;
+    for (var x in this.allocations.state) {
+      if (x.address - last >= size) {
+        break;
+      } else {
+        last = x.address + x.length;
+      }
+    }
+
+    return {
+      address: last,
+      state: new Heap(this.memory, this.allocations.insert(last, size))
+    };
+  }
+
+  this.free = function (address) {
+    return new Heap(this.memory, this.allocations.remove(address))
+  };
 }
 
 module.exports = {
   Memory: Memory,
+  Heap: Heap,
   signed: "signed",
   unsigned: "unsigned",
   float: "float"
