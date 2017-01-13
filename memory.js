@@ -5,9 +5,9 @@ function MemoryError(message, position) {
 MemoryError.prototype = Object.create(Error.prototype);
 MemoryError.prototype.constructor = MemoryError;
 
-function Segfault(message, position) {
+function Segfault(position, message) {
   this.name = 'Segfault';
-  this.message = 'A segfault? In Javascript? Believe it, bub.';
+  this.message = `(${position}) A segfault? In Javascript? Believe it, bub.`;
 }
 Segfault.prototype = Object.create(Error.prototype);
 Segfault.prototype.constructor = Segfault;
@@ -18,28 +18,28 @@ function Memory (initial_size, initial_state) {
   } else {
     this.size = initial_size;
   }
-  
+
   if (initial_state == undefined) {
     this.data = new ArrayBuffer(this.size);
   } else {
     this.data = initial_state.slice(0,this.size);
   }
-  
+
   this.read = function (address, size, typeflag) {
     if (address > this.size || address <= 0) {
-      throw new Segfault;
+      throw new Segfault(address);
     }
     var ret = undefined;
     //set boolean flags here for ease of coding later on
     var float = false;
     var signed = true;
-    
+
     if (typeflag == 'float') {
       float = true;
     } else if (typeflag == 'unsigned') {
       signed = false;
     }
-    
+
     if (size == 1) {
       if (float) {
         throw new MemoryError('Floating point numbers may not have a size of 1 byte');
@@ -71,13 +71,13 @@ function Memory (initial_size, initial_state) {
         throw new MemoryError('8 byte numbers must be floats');
       }
     }
-  
+
   return ret;
   }
-  
+
   this.write = function (value, address, size, typeflag) {
     if (address > this.size || address <= 0) {
-      throw new Segfault;
+      throw new Segfault(address);
     }
     var modified = this.data.slice(0)
     //set boolean flags here for ease of coding later on
@@ -89,7 +89,7 @@ function Memory (initial_size, initial_state) {
     } else if (typeflag == 'unsigned') {
       signed = false;
     }
-    
+
     if (size == 1) {
       if (float) {
         throw new MemoryError('Floating point numbers may not have a size of 1 byte');
@@ -123,7 +123,7 @@ function Memory (initial_size, initial_state) {
     }
     return new Memory(this.size, modified);
   }
-  
+
   this.resize = function (newsize) {
     if (newsize < this.size) {
       throw new MemoryError("You cannot resize memory to be smaller");
@@ -139,17 +139,17 @@ function Heap(initial_data, initial_allocations) {
   } else {
     this.memory = initial_data.slice(initial_size);
   }
-  
+
   if (initial_allocations == undefined) {
     this.allocations = [];
   } else {
     this.allocations = initial_allocations;
   }
-  
+
   this.read() = function (address, size, typeflag) {
     return this.memory.read(address, size, typeflag);
   }
-  
+
   this.write = function (value, address, size, typeflag) {
     return new Heap(this.memory.write(value, address, size, typeflag), this.allocations);
   }

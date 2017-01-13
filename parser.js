@@ -35,7 +35,7 @@ Scope = function() {
 }
 
 FramePointer = function() {};
-Location = function(offset, type, name) { this.offset = offset; this.type = type; this.name = name; };
+Address = function(base, offset, type, name) { this.base = base; this.offset = offset; this.type = type; this.name = name; };
 CObject = function(name, frame) { this.name = name; this.frame = frame; };
 CFunction = function(type, params, body, frame) { this.type = type; this.params = params; this.body = body; this.frame = frame; };
 Param = function(type, name) { this.type = type; this.name = name; };
@@ -96,15 +96,12 @@ module.exports = function(tokens) {
     }
     return undefined;
   }
-  function varInsert(type, ident, position) {
+  function varInsert(type, ident, offset) {
     if(scopes[scopes.length-1].vars[ident.string] != undefined) {
       throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`)
     }
-    loc = new Val("int", position);
-    if(currentFrame != globals) {
-      loc = new Bop("Plus", loc, new FramePointer());
-    }
-    var ret = new Location(loc, type, ident.string);
+    base = (currentFrame == globals) ? "global" : "frame";
+    var ret = new Address(base, offset, type, ident.string);
     scopes[scopes.length-1].vars[ident.string] = ret;
     return ret;
   }
@@ -306,14 +303,20 @@ int main() {
     current = (*current).next;
   }
 }`;*/
+
+// base(current), offset(current)
+// base(current), offset(next) + Deref(base(current), offset(current))
     function level1() {
       function helper(acc) {
         if(pop("Dot")) {
           var objType = Types.typeof(acc).name;
           var fieldName = need("Ident").string;
-          var field = objLookup(objType).get(fieldName);
+          var obj = objLookup(objType);
+          var field = obj.get(fieldName);
+          var base = (acc.base != undefined) ? acc.base : acc;
+          var offset = (acc.offset != undefined) ? acc.offset + field.offset : field.offset;
           if(field) {
-            return new Location(new Bop("Plus", acc, new Val("int", field.offset)), field.type, `${acc.name}.${fieldName}`);
+            return new Address(base, offset, field.type, `${acc.name}.${fieldName}`)
           }
           throw new ParseError(`An object of type '${objType}' has no member ${fieldName}`);
         }
