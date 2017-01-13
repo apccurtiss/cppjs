@@ -31,6 +31,22 @@ function AllocationTable (initial_state) {
     var after = this.state.slice(i);
     return new AllocationTable(before.concat(added).concat(after));
   }
+  
+  this.remove = function(key) {
+    var i = 0;
+    for (i = 0; i < this.state.length; i++) {
+      if (this.state[i].address == key) {
+        break;
+      }
+    }
+    
+    if (i == 0) {
+      throw new Segfault;
+    }
+    
+    var removed = this.state.splice(i,1);
+    return new AllocationTable(removed);
+  }
 }
 
 function Memory (initial_size, initial_state) {
@@ -187,12 +203,15 @@ function Heap(initial_data, initial_allocations) {
       }
     }
     
-    
     return {
       address: last,
       state: new Heap(this.memory, this.allocations.insert(last, size))
-    }
+    };
   }
+  
+  this.free = function (address) {
+    return new Heap(this.memory, this.allocations.remove(address))
+  };
 }
 
 module.exports = {
