@@ -10,12 +10,12 @@ function RuntimeError(message, position) {
 RuntimeError.prototype = Object.create(Error.prototype);
 RuntimeError.prototype.constructor = RuntimeError;
 
-StackFrame = function(start, ret, frame, name) {
+/*StackFrame = function(start, ret, frame, name) {
     this.start = start;
     this.ret = ret;
     this.frame = frame;
     this.name = name;
-};
+};*/
 Obj = function() {};
 module.exports = function(parsedCode) {
     // code setup
@@ -29,12 +29,7 @@ module.exports = function(parsedCode) {
     }
 
     // stack setup
-    var stackFrames = [];
-
-    function currentFrame() {
-        return stackFrames[stackFrames.length - 1];
-    };
-    var stack = new memory.Memory();
+    //var stackFrames = [];
     var globalsPointer = 8;
 
     var globals = parsedCode.globals;
@@ -45,7 +40,9 @@ module.exports = function(parsedCode) {
             stack = stack.write(val.value, globalsPointer + globalData[i].ast.position, 4, memory.signed);
         }
     }
-    stackPointer = globalsPointer + globals.size;
+    //stackPointer = globalsPointer + globals.size;
+    
+    var currentFrame = new memory.StackFrame(globals);
 
     // instruction setup
     var currentInstruction = 0;
@@ -82,25 +79,7 @@ module.exports = function(parsedCode) {
     }
 
     this.dumpStack = function() {
-        var dump = [];
-        for (var i = 0; i < stackFrames.length; i++) {
-            dump.push(new Object);
-            dump[i].name = stackFrames[i].name;
-            dump[i].values = {};
-            for (var j = 0; j < stackFrames[i].frame.vars.length; j++) {
-                if (stackFrames[i].frame.vars[j].type instanceof Types.Obj) {
-                    var objDef = parsedCode.globalObjects[stackFrames[i].frame.vars[j].type.name];
-                    var members = {};
-                    for (var k in objDef.vars) {
-                        members[k] = stack.read(stackFrames[i].start + stackFrames[i].frame.vars[j].offset + objDef.vars[k].offset, 4, memory.unsigned);
-                    }
-                    dump[i].values[stackFrames[i].frame.vars[j].name] = members;
-                } else {
-                    dump[i].values[stackFrames[i].frame.vars[j].name] = stack.read(stackFrames[i].start + stackFrames[i].frame.vars[j].offset, 4, memory.unsigned);
-                }
-            }
-        }
-        return dump;
+        return currentFrame.trace();
     }
 
     var Node = function(type, name, position) {
@@ -171,7 +150,7 @@ module.exports = function(parsedCode) {
         if (ast instanceof Val || ast instanceof Address) {
             return ast;
         } else if (ast instanceof Call) {
-            stackFrames.push(new StackFrame(stackPointer, currentInstruction, parsedCode.functions[ast.name].frame, ast.name));
+            currentFrame = memory.StackFrame(parsedCode.functions[ast.name].frame, currentFrame)
             for (var i = 0; i < ast.args.length; i++) {
                 var val = eval(ast.args[i]);
                 stack = stack.write(val.value, stackPointer + (4 * i), 4, memory.signed);
@@ -181,7 +160,7 @@ module.exports = function(parsedCode) {
             console.log(eval(ast.text).value);
             return undefined;
         } else if (ast instanceof Return) {
-            stackPointer -= stackFrames.pop().size;
+            currentFrame = currentFrame.ret()
             if (ast.value) {
                 return eval(ast.value);
             } else {

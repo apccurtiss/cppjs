@@ -1,10 +1,11 @@
-var Types = require("./types.js");
+var Types = require("./types.js")
+var memory = require("./memory.js")
 
 // logical line
 Line = function(ast, start, end) { this.ast = ast; this.start = start; this.end = end; };
 
-MemoryCell = function(offset, type, name) { this.offset = offset; this.type = type; this.name = name; };
-Frame = function() {
+MemoryCell = memory.MemoryCell; //function(offset, type, name) { this.offset = offset; this.type = type; this.name = name; };
+Frame = memory.AbstractFrame; /*function() {
   this.size = 0;
   this.vars = [];
   this.push = function(type, name, size) {
@@ -13,7 +14,7 @@ Frame = function() {
     this.size += size;
     return this.size - size;
   }
-}
+}*/
 Members = function() {
   this.size = 0;
   this.vars = {};
@@ -68,7 +69,7 @@ function positionToString(position) {
 
 module.exports = function(tokens) {
   var scopes = [new Scope()];
-  var globals = new Frame();
+  var globals = new Frame("Globals");
   var currentFrame;
   var functions = {};
   var currentToken = 0;
@@ -517,9 +518,9 @@ int main() {
   }
 
   function parseFunctionDecl() {
-    currentFrame = new Frame();
     var type = parseType();
     var name = need("Ident").string;
+    currentFrame = new Frame(name);
     var params = parseList("OParen", "CParen", "Comma", () => {
       var type = need("Type").string;
       var ident = need("Ident");

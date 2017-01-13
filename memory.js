@@ -214,9 +214,83 @@ function Heap(initial_data, initial_allocations) {
   };
 }
 
+function MemoryCell(offset, type, name) {
+  this.offset = offset;
+  this.type = type;
+  this.name = name;
+};
+
+function AbstractFrame(name) {
+  this.name = name;
+  this.size = 0;
+  this.vars = [];
+  this.push = function(type, name, size) {
+    this.size += !(this.size % size) ? 0 : (size - (this.size % size));
+    this.vars.push(new MemoryCell(this.size, type, name));
+    this.size += size;
+    return this.size - size;
+  }
+}
+
+function StackFrame(abstract, prev) {
+  this.prev = prev;
+  if (this.prev == undefined) {
+    this.startaddr == 8;
+    this.memory = Memory(128);
+  } else {
+    this.startaddr = (prev.startaddr + prev.size + 8) % 8;
+    this.memory = prev.memory;
+  }
+  this.size = abstract.size;
+  this.abstract = abstract;
+  
+  this.ret = function() {
+    return this.prev;
+  }
+  
+  this.read = function(address, size, typeflag) {
+    return this.memory.read(address + this.startaddr, size, typeflag);
+  }
+  
+  this.write = function(value, addr, size, typeflag) {
+    return new StackFrame(this.size, this.memory.write(value, address, size, typeflag), this.n, this.prev);
+  }
+  
+  this.name = function() {
+    if (this.n == undefined) {
+      return "Stack Frame at " + this.startaddr;
+    }
+    return this.abstract.name + " at " + this.startaddr;
+  }
+  
+  this.trace = function(objdef) {
+    var trace = []
+    if (this.prev != undefined) {
+      trace = this.prev.trace();
+    }
+    var curr = new Object;
+    for (var j = 0; j < this.abstract.vars.length; j++) {
+      if (this.abstract.vars[j].type instanceof Types.Obj) {
+        var members = {};
+        for (var k in objdef.vars) {
+          members[k] = stack.read(this.startaddr + this.abstract.vars[j].offset + objdef.vars[k].offset, 4, memory.unsigned);
+        }
+        curr.values[this.abstract.vars[j].name] = members;
+      } else {
+        curr.values[this.abstract.vars[j].name] = stack.read(this.startaddr + this.abstract.vars[j].offset, 4, memory.unsigned);
+      }
+    }
+    trace.push(curr);
+    return trace;
+  }
+}
+
 module.exports = {
   Memory: Memory,
   Heap: Heap,
+  AbstractFrame: AbstractFrame,
+  StackFrame: StackFrame,
+  CreateStack: CreateStack,
   signed: "signed",
   unsigned: "unsigned",
   float: "float"
