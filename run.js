@@ -100,15 +100,21 @@ function run(ptu) {
     // console.log(res.functions["main"].body[9].ast.e2.offset.e1);
     // console.log(res.globalObjects);
     var rt = new Runtime(res);
-    rt.step(1);
-    console.log("\n======================================\n");
-    console.log(rt.getCurrentLine());
-    console.log("Globals:");
-    console.log(rt.dumpGlobals());
-    console.log("Stack:");
-    var stack = rt.dumpStack();
-    for(var j = 0; j < stack.length; j++) {
-      console.log(stack[j]);
+    for(var i = 0; i < 19; i++) {
+      rt.step(1);
+      //
+      // console.log(rt.guessDataStructure().nodes);
+      // console.log(rt.guessDataStructure().edges);
+    // }
+      console.log("\n======================================\n");
+      console.log(rt.getCurrentLine());
+      console.log("Globals:");
+      console.log(rt.dumpGlobals());
+      console.log("Stack:");
+      var stack = rt.dumpStack();
+      for(var j = 0; j < stack.length; j++) {
+        console.log(stack[j]);
+      }
     }
     // var functions = res.functions;
     // var globals = res.globals;
