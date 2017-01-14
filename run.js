@@ -74,9 +74,9 @@ int main() {
   a.next = &b;
   b.next = &c;
   c.next = 0;
-
   current = &a;
-  while(current != 0) {
+  
+  while (current != 0) {
     current = (*current).next;
   }
 }`;
@@ -108,8 +108,8 @@ function run(ptu) {
     // }
       console.log("\n======================================\n");
       console.log(rt.getCurrentLine());
-      console.log("Globals:");
-      console.log(rt.dumpGlobals());
+      //console.log("Globals:");
+      //console.log(rt.dumpGlobals());
       console.log("Stack:");
       var stack = rt.dumpStack();
       for(var j = 0; j < stack.length; j++) {

@@ -99,7 +99,9 @@ module.exports = function(tokens) {
   }
   function varInsert(type, ident, offset) {
     if(scopes[scopes.length-1].vars[ident.string] != undefined) {
-      throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`)
+      console.log("Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}");
+      throw new ParseError();
+      //throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`)
     }
     base = (currentFrame == globals) ? "global" : "frame";
     var ret = new Address(base, offset, type, ident.string);
@@ -343,7 +345,10 @@ int main() {
         else {
           var v = varLookup(a.string);
           if(v == undefined) {
-            throw new ParseError(`Variable '${a.string}' has not been declared before it was used:\n${positionToString(a.position)}`);
+            var x = a.string;
+            var y = positionToString(a.position);
+            console.log(`Variable '${x}' has not been declared before it was used:\n${y}`);
+            throw new ParseError();
           }
           return v;
         }

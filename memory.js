@@ -43,7 +43,7 @@ function AllocationTable (initial_state) {
     }
 
     if (i == 0) {
-      throw new Segfault;
+      throw new Segfault(0);
     }
 
     var removed = this.state.splice(i,1);
@@ -162,6 +162,7 @@ function Memory (initial_size, initial_state) {
         throw new MemoryError('8 byte numbers must be floats');
       }
     }
+    
     return new Memory(this.size, modified);
   }
 
@@ -236,11 +237,12 @@ function AbstractFrame(name) {
 
 function StackFrame(abstract, prev) {
   this.prev = prev;
+  this.startaddr = 8;
   if (this.prev == undefined) {
-    this.startaddr == 8;
     this.memory = new Memory(128);
   } else {
-    this.startaddr = (prev.startaddr + prev.size + 8) % 8;
+    this.startaddr = prev.startaddr + prev.size;
+    this.startaddr += 8 - (this.startaddr % 8)
     this.memory = prev.memory;
   }
   this.size = abstract.size;
@@ -273,7 +275,7 @@ function StackFrame(abstract, prev) {
       trace = this.prev.trace();
     }
     var curr = new Object;
-    curr.values = {};
+    curr.values = {}
     for (var j = 0; j < this.abstract.vars.length; j++) {
       if (this.abstract.vars[j].type instanceof Types.Obj) {
         objdef = objects[this.abstract.vars[j].type.name]
@@ -284,8 +286,10 @@ function StackFrame(abstract, prev) {
         curr.values[this.abstract.vars[j].name] = members;
       } else {
         curr.values[this.abstract.vars[j].name] = this.memory.read(this.startaddr + this.abstract.vars[j].offset, 4, "unsigned");
+        
       }
     }
+    console.log(curr.values);
     trace.push(curr);
     return trace;
   }
