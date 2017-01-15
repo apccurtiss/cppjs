@@ -162,7 +162,7 @@ function Memory (initial_size, initial_state) {
         throw new MemoryError('8 byte numbers must be floats');
       }
     }
-    
+
     return new Memory(this.size, modified);
   }
 
@@ -187,7 +187,7 @@ function Heap(initial_data, initial_allocations) {
   } else {
     this.allocations = initial_allocations;
   }
-  
+
   this.read = function (address, size, typeflag) {
     return this.memory.read(address, size, typeflag);
   }
@@ -247,35 +247,35 @@ function StackFrame(abstract, prev) {
   }
   this.size = abstract.size;
   this.abstract = abstract;
-  
+
   this.ret = function() {
     return this.prev;
   }
-  
+
   this.read = function(address, size, typeflag) {
     return this.memory.read(address, size, typeflag);
   }
-  
+
   this.write = function(value, address, size, typeflag) {
     var mod = new StackFrame(this.abstract, this.prev);
     mod.memory = this.memory.write(value, address, size, typeflag);
     return mod;
   }
-  
+
   this.name = function() {
     if (this.n == undefined) {
       return "Stack Frame at " + this.startaddr;
     }
     return this.abstract.name + " at " + this.startaddr;
   }
-  
+
   this.trace = function(objects) {
     var trace = []
     if (this.prev != undefined) {
       trace = this.prev.trace();
     }
     var curr = new Object;
-    curr.values = {}
+    curr = {}
     for (var j = 0; j < this.abstract.vars.length; j++) {
       if (this.abstract.vars[j].type instanceof Types.Obj) {
         objdef = objects[this.abstract.vars[j].type.name]
@@ -283,13 +283,12 @@ function StackFrame(abstract, prev) {
         for (var k in objdef.vars) {
           members[k] = this.memory.read(this.startaddr + this.abstract.vars[j].offset + objdef.vars[k].offset, 4, "unsigned");
         }
-        curr.values[this.abstract.vars[j].name] = members;
+        curr[this.abstract.vars[j].name] = members;
       } else {
-        curr.values[this.abstract.vars[j].name] = this.memory.read(this.startaddr + this.abstract.vars[j].offset, 4, "unsigned");
-        
+        curr[this.abstract.vars[j].name] = this.memory.read(this.startaddr + this.abstract.vars[j].offset, 4, "unsigned");
+
       }
     }
-    console.log(curr.values);
     trace.push(curr);
     return trace;
   }

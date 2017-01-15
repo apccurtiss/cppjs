@@ -1,0 +1,75 @@
+body {
+  background: #DEE;
+}
+
+.button {
+  height: 30px;
+  width: 100px;
+  border-radius: 5px;
+}
+
+#disclaimer {
+  background: #f0d0c8;
+  border: 1px solid red;
+  padding: 5px;
+  border-radius: 5px;
+  font-family: sans-serif;
+  float:right;
+}
+
+#cjs {
+  color: red;
+  font-weight: bold;
+}
+
+#alpha {
+  font-weight: bold;
+}
+
+#joke {
+  font-style: italic;
+  font-size: 70%;
+}
+
+#editor {
+  border-radius: 15px;
+  position: absolute;
+  top: 5%;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 90%;
+  margin: 5px;
+  width: calc(100% - 10px);
+}
+
+#output {
+  position: absolute;
+  top: 70%;
+  left: 0;
+  border-radius: 15px;
+  height: 27.5%;
+  margin: 5px;
+  background: #FFF;
+  width: calc(100% - 10px);
+}
+
+.output {
+  width: calc(50% - 20px);
+  height: calc(100% - 20px);
+  float: left;
+  margin: 10px;
+  padding: 10px;
+  border-radius: 15px;
+  border: 1px solid #ececec;
+  font-family: sans-serif;
+  -webkit-box-sizing: border-box; /* Safari/Chrome, other WebKit */
+  -moz-box-sizing: border-box;    /* Firefox, other Gecko */
+  box-sizing: border-box;         /* Opera/IE 8+ */
+}
+
+#canvas {
+  display: none;
+  float: right;
+  border-radius: 0px 0px 20px 20px;
+}

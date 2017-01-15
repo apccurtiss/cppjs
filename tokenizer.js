@@ -1,8 +1,7 @@
-function Position(lnum, line, lineIndex, codeIndex) {
-  this.lnum = lnum;
+function Position(line, lineNum, lineIndex) {
   this.line = line;
+  this.lineNum = lineNum;
   this.lineIndex = lineIndex;
-  this.codeIndex = codeIndex;
 }
 
 function TokenError(message, position) {
@@ -107,20 +106,17 @@ function parseToken(code, position) {
 function tokenize(code) {
   var tokens = [];
   var lines = code.split('\n');
-  var index = 0;
   for(var i = 0; i < lines.length; i++) {
     if(!lines[i]) continue;
     var position = 0;
     var line = lines[i];
     do {
-      var token = parseToken(line.substring(position), new Position(i+1, line, position+1, index+1));
+      var token = parseToken(line.substring(position), new Position(line, i+1, position+1));
       if(token.type != "Whitespace") {
         tokens.push(token);
       }
-      index += token.string.length;
       position += token.string.length;
     } while (position < line.length);
-    index++;
   }
   return tokens;
 }

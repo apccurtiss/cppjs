@@ -1,39 +1,22 @@
-/*
- *  Preprocessor
- */
-function preprocess(code) {
-  return code;
-}
-
-/*
- *  Tokeniser
- */
-var Tokenize = require("./tokenizer");
-
-/*
- *  Parser
- */
-var Parse = require("./parser");
-
-/*
-*  Evaluation
-*/
+var tokenize = require("./tokenizer");
+var tarse = require("./parser");
 var Runtime = require("./runtime");
 
-
-module.exports = function(code, print_func) {
-  this.pp = preprocess(code);
-
-  this.tokens = Tokenize(this.pp);
-
-  this.ast = Parse(this.tokens);
-
-  var rt = new Runtime(this.ast, print_func);
-  rt.typecheck();
-
-
-  this.run = function() {
-    var status_code = rt.run();
-    return status_code ? status_code.value : 0 ;
+global.c_program = function(code) {
+  var compiledCode;
+  var program;
+  this.load = function(code) {
+    compiledCode = parse(tokenize(code));
+    program = new Runtime(compiledCode);
+  }
+  this.step = function() {
+    program.step(1);
+    return program.getCurrentLine();
+  }
+  this.reset = function() {
+    program = new Runtime(compiledCode);
+  }
+  if(code) {
+    this.load(code);
   }
 }

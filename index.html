@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+
+<!--
+	I know handwritten HTML is a bit old-school, but it's for learning purposes.
+	And besides, maybe I want my webpage to load without downloading 50k of font packages and Javascript.
+-->
+
+<html lang="en-US">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>C.js</title>
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+
+<button type="button" class="button" id="run">Run</button>
+<button type="button" class="button" id="step" style="display: none;">Step</button>
+<button type="button" class="button" id="reset" style="display: none;">Reset</button>
+<div id="disclaimer"><span id="cjs">C.js: </span><span id="alpha">ALPHA </span><span id="joke">( Version 0.0.Broken )</span></div>
+<div id="editor">int main() {
+
+}</div>
+<div id="output" style="display: none;">
+<div class="output" id="stack">
+  Stack:
+</div>
+<div class="output" id="stdout">
+  Output:
+</div>
+</div>
+
+<!-- <canvas id="canvas" canvas width='300px' height='300px'></canvas> -->
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script src="../ace-builds/src-noconflict/ace.js" type="text/javascript" charset="utf-8"></script>
+<script src="./cjs-min.js" type="text/javascript" charset="utf-8"></script>
+<script src="./editor.js" type="text/javascript" charset="utf-8"></script>
+</body>
+</html>

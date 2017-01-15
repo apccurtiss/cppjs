@@ -61,7 +61,7 @@ ParseError.prototype.constructor = ParseError;
 
 // prints a position in an easy-to-read manner for error reporting
 function positionToString(position) {
-  var str = `Line ${position.lnum}:\n`;
+  var str = `Line ${position.lineNum}:\n`;
   str += position.line + "\n";
   str += Array(position.lineIndex).join(" ") + "^";
   return str;
@@ -367,18 +367,18 @@ int main() {
   }
 
   function positionOf(parseFunction) {
-    var start = nextToken().position.codeIndex;
+    var start = nextToken().position;
     var ast = parseFunction();
-    var end = nextToken().position.codeIndex;
+    var end = nextToken().position;
     return new Line(ast, start, end);
   }
 
   function parseLogicalLine() {
-    var start = nextToken().position.codeIndex;
+    var start = nextToken().position;
     var ret;
     // return statement
     if(pop("Return")) {
-      ret = [new Line(new Return(parseExpr()), start, nextToken().position.codeIndex)];
+      ret = [new Line(new Return(parseExpr()), start, nextToken().position)];
       need("Semi", "A line should have ended with a semicolon before this point");
     }
     // variable declaration
@@ -387,7 +387,7 @@ int main() {
     }
     // normal expression
     else {
-      ret = [new Line(parseExpr(), start, nextToken().position.codeIndex)];
+      ret = [new Line(parseExpr(), start, nextToken().position)];
       need("Semi", "A line should have ended with a semicolon before this point");
     }
     return ret;
@@ -491,7 +491,7 @@ int main() {
   }
 
   function parseVarDecls() {
-    var start = nextToken().position.codeIndex;
+    var start = nextToken().position;
     var baseType = parseType();
     var decls = [];
     while(true) {
@@ -510,9 +510,9 @@ int main() {
       var value = pop("Assign") ? parseExpr() : undefined;
       var offset = currentFrame.push(type, ident.string, sizeof(type));
       varInsert(type, ident, offset);
-      decls.push(new Line(new Decl(type, ident.string, offset, value), start, nextToken().position.codeIndex));
+      decls.push(new Line(new Decl(type, ident.string, offset, value), start, nextToken().position));
       if(pop("Comma")) {
-        start = nextToken().position.codeIndex
+        start = nextToken().position;
       }
       else {
         break;
