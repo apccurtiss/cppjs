@@ -1,5 +1,5 @@
-var tokenize = require("../tokenizer.js");
-var parse = require("../parser.js");
+var tokenize = require("../src/tokenizer.js");
+var parse = require("../src/parser.js");
 
 function expectSuccess(testFunction, description) {
   var error = undefined;

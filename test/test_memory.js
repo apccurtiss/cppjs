@@ -1,4 +1,4 @@
-var memory = require('./memory.js');
+var memory = require('../src/memory.js');
 var test = require('tape');
 
 test('setting and loading values from memory', function(t) {
