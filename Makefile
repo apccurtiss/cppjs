@@ -1,2 +1,2 @@
 all:
-	browserify src/c.js -o cjs-web.js
+	browserify src/c.js -o docs/cjs-web.js

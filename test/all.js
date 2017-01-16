@@ -1,2 +1,2 @@
-require("./parser_tests.js");
-require("./test_memory.js");
+require("./parser_testing.js");
+require("./memory_testing.js");

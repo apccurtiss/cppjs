@@ -1,7 +1,7 @@
 // var preprocess = require("./preprocesser");
-var tokenize = require("./tokenizer");
-var parse = require("./parser");
-var Runtime = require("./runtime");
+var tokenize = require("./src/tokenizer");
+var parse = require("./src/parser");
+var Runtime = require("./src/runtime");
 
 var test1 = `
 float foo(int x) {
@@ -97,6 +97,7 @@ function run(ptu) {
     // console.log("Tokenized:");
     // console.log(tok);
     var res = parse(tok);
+    console.log(res);
     // console.log(res.functions["main"].body[9].ast.e2.offset.e1);
     // console.log(res.globalObjects);
     var rt = new Runtime(res);
@@ -170,4 +171,9 @@ function run(ptu) {
 //   c = &a;
 // }
 //   `)
-run(test4);
+run(    `int main() {
+      int x, y;
+    }
+    int main() {
+      int x, y;
+    }`);

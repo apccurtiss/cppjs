@@ -99,9 +99,7 @@ module.exports = function(tokens) {
   }
   function varInsert(type, ident, offset) {
     if(scopes[scopes.length-1].vars[ident.string] != undefined) {
-      console.log("Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}");
-      throw new ParseError();
-      //throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`)
+      throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`);
     }
     base = (currentFrame == globals) ? "global" : "frame";
     var ret = new Address(base, offset, type, ident.string);
@@ -525,6 +523,9 @@ int main() {
   function parseFunctionDecl() {
     var type = parseType();
     var name = need("Ident").string;
+    if (functions[name] != undefined) {
+      throw new ParseError(`function ${name} is defined at two locations`);
+    }
     currentFrame = new Frame(name);
     var params = parseList("OParen", "CParen", "Comma", () => {
       var type = need("Type").string;
