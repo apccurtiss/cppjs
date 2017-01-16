@@ -2,5 +2,6 @@
   "name": "cjs",
   "version": "0.0.1",
   "description": "A C interpreter / debugger written in Javascript",
-  "scripts": { "test": "node test/all.js" }
+  "scripts": { "test": "node test/all.js" },
+  "devDependencies": { "tape" : ""}
 }
