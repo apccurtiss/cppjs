@@ -1,7 +1,7 @@
 var tokenize = require("../src/tokenizer.js");
 var parse = require("../src/parser.js");
 
-var test = require("tape-catch");
+var test = require("tape");
 
 test("creating and initializing various variables", function(t) {
   t.plan(8);
