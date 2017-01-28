@@ -66,6 +66,8 @@ module.exports = function(parsedCode) {
       if (isNaN(currentInstruction)) {
         break;
       }
+      // console.log("On line:");
+      // console.log(this.getCurrentLine().ast);
       eval(this.getCurrentLine().ast);
       currentInstruction++;
     }
@@ -84,41 +86,43 @@ module.exports = function(parsedCode) {
     return currentFrame.trace(parsedCode.globalObjects);
   }
 
-  // var Node = function(type, name, position) {
-  //     this.type = type;
-  //     this.name = name;
-  //     this.position = position;
-  // }
-  // var nodes = [];
-  // var Edge = function(start, end) {
-  //     this.start = start;
-  //     this.end = end;
-  // }
-  // var edges = [];
-  //
-  // function registerObjectLocation(typeName, name, position) {
-  //     nodes.push(new Node(typeName, name, position));
-  // }
-  // this.guessDataStructure = function() {
-  //     edges = [];
-  //     for (var i = 0; i < nodes.length; i++) {
-  //         var object = parsedCode.globalObjects[nodes[i].type];
-  //         for (v in object.vars) {
-  //             for (var j = 0; j < nodes.length; j++) {
-  //                 if (nodes[j].position == currentFrame.read(nodes[i].position + object.vars[v].offset, 4, memory.unsigned)) {
-  //                     edges.push(new Edge(nodes[i].position, nodes[j].position));
-  //                     break;
-  //                 }
-  //             }
-  //         }
-  //     }
-  //     return {
-  //         nodes: nodes,
-  //         edges: edges
-  //     };
-  // }
+  var Node = function(type, name, position) {
+      this.type = type;
+      this.name = name;
+      this.position = position;
+  }
+  var nodes = [];
+  var Edge = function(start, end) {
+      this.start = start;
+      this.end = end;
+  }
+  var edges = [];
+
+  function registerObjectLocation(typeName, name, position) {
+      nodes.push(new Node(typeName, name, position));
+  }
+  this.identifyDataStructure = function() {
+    edges = [];
+    for (var i = 0; i < nodes.length; i++) {
+      // console.log(nodes[i]);
+      var object = parsedCode.globalObjects[nodes[i].type];
+      for (v in object.vars) {
+          for (var j = 0; j < nodes.length; j++) {
+              if (nodes[j].position == currentFrame.read(nodes[i].position + object.vars[v].offset, 4, memory.unsigned)) {
+                  edges.push(new Edge(i, j));
+                  break;
+              }
+          }
+      }
+    }
+    return {
+        nodes: nodes,
+        edges: edges
+    };
+  }
 
   function resolveLocation(ast) {
+    // console.log(ast);
     if (ast instanceof Address) {
       var base;
       if(ast.base == "global") {
@@ -136,6 +140,7 @@ module.exports = function(parsedCode) {
       throw new RuntimeError(`Cannot get location of ${JSON.stringify(ast)}`);
     }
   }
+
   function getValue(ast) {
     if (ast instanceof Address) {
       var loc = resolveLocation(ast);
@@ -221,7 +226,7 @@ module.exports = function(parsedCode) {
       }
     } else if (ast instanceof Decl) {
       if (ast.type instanceof Types.Obj) {
-        // registerObjectLocation(ast.type.name, ast.name, currentFrame.startaddr - currentFrame.abstract.size + ast.position)
+        registerObjectLocation(ast.type.name, ast.name, currentFrame.startaddr + ast.position)
       }
     } else if (ast instanceof FramePointer) {
       return new Val("int", currentFrame.startaddr);

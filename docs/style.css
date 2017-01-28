@@ -1,11 +1,15 @@
 body {
-  background: #DEE;
+  background: #264543;
 }
 
 .button {
   height: 30px;
   width: 100px;
   border-radius: 5px;
+}
+
+#hide {
+  width: 200px;
 }
 
 #disclaimer {
@@ -69,7 +73,14 @@ body {
 }
 
 #canvas {
-  display: none;
-  float: right;
-  border-radius: 0px 0px 20px 20px;
+  position: absolute;
+  top: 5%;
+  right: 0;
+  bottom: 0;
+  left: 50%;
+  border-radius: 15px;
+  margin: 5px;
+  background: white;
+  width: calc(50% - 10px);
+  height: 62.5%;
 }

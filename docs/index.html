@@ -1,12 +1,5 @@
 <!DOCTYPE html>
-
-<!--
-	I know handwritten HTML is a bit old-school, but it's for learning purposes.
-	And besides, maybe I want my webpage to load without downloading 50k of font packages and Javascript.
--->
-
 <html lang="en-US">
-
 <head>
   <meta charset="UTF-8" />
   <title>C.js</title>
@@ -17,23 +10,37 @@
 <button type="button" class="button" id="run">Run</button>
 <button type="button" class="button" id="step" style="display: none;">Step</button>
 <button type="button" class="button" id="reset" style="display: none;">Reset</button>
+<button type="button" class="button" id="hide" style="display: none;">Hide Data Structure</button>
 <div id="disclaimer"><span id="cjs">C.js: </span><span id="alpha">ALPHA </span><span id="joke">( Version 0.0.Broken )</span></div>
-<div id="editor">int main() {
+<div id="editor">struct node {
+  struct node *next;
+}
 
+int main() {
+  struct node a, b, c, *current;
+  a.next = &b;
+  b.next = &c;
+  c.next = 0;
+
+  *current = &a;
+  while(current != 0) {
+      current = (*current).next;
+  }
 }</div>
 <div id="output" style="display: none;">
-<div class="output" id="stack">
-  Stack:
-</div>
 <div class="output" id="stdout">
   Output:
 </div>
+<div class="output" id="stack">
+  Variables:
+</div>
 </div>
 
-<!-- <canvas id="canvas" canvas width='300px' height='300px'></canvas> -->
+<canvas id="canvas" width='300px' height='300px'></canvas>
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.1.1/jquery.min.js"></script>
+<script src="./jquery-3.1.1.min.js"></script>
 <script src="./ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
+<script src="./canvas.js" type="text/javascript" charset="utf-8"></script>
 <script src="./cjs-web.js" type="text/javascript" charset="utf-8"></script>
 <script src="./editor.js" type="text/javascript" charset="utf-8"></script>
 </body>

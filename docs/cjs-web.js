@@ -1,22 +1,39 @@
 (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 (function (global){
 var tokenize = require("./tokenizer");
-var tarse = require("./parser");
+var parse = require("./parser");
 var Runtime = require("./runtime");
+
+function CAlert(message, position) {
+  this.name = 'CAlert';
+  this.stack = (new Error()).stack;
+  this.message = message || '';
+}
+CAlert.prototype = Object.create(Error.prototype);
+CAlert.prototype.constructor = CAlert;
 
 global.c_program = function(code) {
   var compiledCode;
-  var program;
+  var rt;
   this.load = function(code) {
     compiledCode = parse(tokenize(code));
-    program = new Runtime(compiledCode);
+    rt = new Runtime(compiledCode);
   }
   this.step = function() {
-    program.step(1);
-    return program.getCurrentLine();
+    if(!rt) {
+      throw new CAlert('No program loaded!');
+    }
+    rt.step(1);
+    return rt.getCurrentLine();
   }
   this.reset = function() {
-    program = new Runtime(compiledCode);
+    rt = new Runtime(compiledCode);
+  }
+  this.dumpStack = function() {
+    return rt.dumpStack();
+  }
+  this.identifyDataStructure = function() {
+    return rt.identifyDataStructure();
   }
   if(code) {
     this.load(code);
@@ -434,9 +451,7 @@ module.exports = function(tokens) {
   }
   function varInsert(type, ident, offset) {
     if(scopes[scopes.length-1].vars[ident.string] != undefined) {
-      console.log("Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}");
-      throw new ParseError();
-      //throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`)
+      throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`);
     }
     base = (currentFrame == globals) ? "global" : "frame";
     var ret = new Address(base, offset, type, ident.string);
@@ -860,6 +875,9 @@ int main() {
   function parseFunctionDecl() {
     var type = parseType();
     var name = need("Ident").string;
+    if (functions[name] != undefined) {
+      throw new ParseError(`function ${name} is defined at two locations`);
+    }
     currentFrame = new Frame(name);
     var params = parseList("OParen", "CParen", "Comma", () => {
       var type = need("Type").string;
@@ -965,6 +983,8 @@ module.exports = function(parsedCode) {
       if (isNaN(currentInstruction)) {
         break;
       }
+      // console.log("On line:");
+      // console.log(this.getCurrentLine().ast);
       eval(this.getCurrentLine().ast);
       currentInstruction++;
     }
@@ -983,41 +1003,43 @@ module.exports = function(parsedCode) {
     return currentFrame.trace(parsedCode.globalObjects);
   }
 
-  // var Node = function(type, name, position) {
-  //     this.type = type;
-  //     this.name = name;
-  //     this.position = position;
-  // }
-  // var nodes = [];
-  // var Edge = function(start, end) {
-  //     this.start = start;
-  //     this.end = end;
-  // }
-  // var edges = [];
-  //
-  // function registerObjectLocation(typeName, name, position) {
-  //     nodes.push(new Node(typeName, name, position));
-  // }
-  // this.guessDataStructure = function() {
-  //     edges = [];
-  //     for (var i = 0; i < nodes.length; i++) {
-  //         var object = parsedCode.globalObjects[nodes[i].type];
-  //         for (v in object.vars) {
-  //             for (var j = 0; j < nodes.length; j++) {
-  //                 if (nodes[j].position == currentFrame.read(nodes[i].position + object.vars[v].offset, 4, memory.unsigned)) {
-  //                     edges.push(new Edge(nodes[i].position, nodes[j].position));
-  //                     break;
-  //                 }
-  //             }
-  //         }
-  //     }
-  //     return {
-  //         nodes: nodes,
-  //         edges: edges
-  //     };
-  // }
+  var Node = function(type, name, position) {
+      this.type = type;
+      this.name = name;
+      this.position = position;
+  }
+  var nodes = [];
+  var Edge = function(start, end) {
+      this.start = start;
+      this.end = end;
+  }
+  var edges = [];
+
+  function registerObjectLocation(typeName, name, position) {
+      nodes.push(new Node(typeName, name, position));
+  }
+  this.identifyDataStructure = function() {
+    edges = [];
+    for (var i = 0; i < nodes.length; i++) {
+      // console.log(nodes[i]);
+      var object = parsedCode.globalObjects[nodes[i].type];
+      for (v in object.vars) {
+          for (var j = 0; j < nodes.length; j++) {
+              if (nodes[j].position == currentFrame.read(nodes[i].position + object.vars[v].offset, 4, memory.unsigned)) {
+                  edges.push(new Edge(i, j));
+                  break;
+              }
+          }
+      }
+    }
+    return {
+        nodes: nodes,
+        edges: edges
+    };
+  }
 
   function resolveLocation(ast) {
+    // console.log(ast);
     if (ast instanceof Address) {
       var base;
       if(ast.base == "global") {
@@ -1035,6 +1057,7 @@ module.exports = function(parsedCode) {
       throw new RuntimeError(`Cannot get location of ${JSON.stringify(ast)}`);
     }
   }
+
   function getValue(ast) {
     if (ast instanceof Address) {
       var loc = resolveLocation(ast);
@@ -1120,7 +1143,7 @@ module.exports = function(parsedCode) {
       }
     } else if (ast instanceof Decl) {
       if (ast.type instanceof Types.Obj) {
-        // registerObjectLocation(ast.type.name, ast.name, currentFrame.startaddr - currentFrame.abstract.size + ast.position)
+        registerObjectLocation(ast.type.name, ast.name, currentFrame.startaddr + ast.position)
       }
     } else if (ast instanceof FramePointer) {
       return new Val("int", currentFrame.startaddr);
