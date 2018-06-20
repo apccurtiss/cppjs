@@ -9,14 +9,22 @@ var ws = (p) => lang.between(
   parse.many(text.space),
   p);
 
-var bind_list = () => {
-  var args = Array.apply(null, arguments)
-  parsers = args.slice(0, -1);
-  f = args[args.length - 1];
+var bind_list = (...args) => {
+  var parsers = args.slice(0, -1);
+  var f = args[args.length - 1];
   return parse.bind(parse.eager(
-    parse.enumeration.apply(null, parsers)),
-    (x) => f.apply(null, x));
+    parse.enumerationa(parsers)),
+    (results) => parse.always(f.apply(null, results)));
 }
+
+var positioned = (p) => {
+  return bind_list(
+    parse.getPosition, p, parse.getPosition,
+    (start, result, end) => {
+      result.position = new ast.Position(start.index, end.index);
+      return result;
+    })
+  };
 
 var semi = parse.expected('semicolon', text.character(';'))
 
@@ -57,11 +65,11 @@ var number = parse.bind(
     ds)))));
 
 // parse.late used to revolve cyclical reference
-var atom = parse.late(() =>ws(parse.expected(
+var atom = parse.late(() => ws(parse.expected(
   'Expected atom',
   parse.choice(
     number,
-    var_name,
+    parse.bind(var_name, (n) => parse.always(new ast.Var(n))),
     lang.between(text.character('('),
                  text.character(')'),
                  expr)))));
@@ -79,7 +87,7 @@ var prefxs = (ops, next) => parse.bind(
 var sufxs = (ops, next) => parse.bind(
   next,
   (e) => parse.bind(
-    parse.many1(ops),
+    parse.many(ops),
     (ops) => parse.always(nu.foldl(
       (acc, op) => new ast.Uop(op, acc),
       e,
@@ -90,7 +98,7 @@ var bopsl = (ops, next) => lang.chainl1(
   parse.bind(
     ws(ops),
     (op) => parse.always((e1, e2) => new ast.Bop(op, e1, e2))),
-  next);
+  positioned(next));
 
 var bopsr = (ops, next) => lang.chainr1(
   parse.bind(
@@ -102,8 +110,8 @@ var bopsr = (ops, next) => lang.chainr1(
 var group1 = bopsl(text.string('::'), atom);
 var group2 = group1; // TODO(alex): Postfixes
 // TODO(alex): Add casting
-var group3 = prefxs(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '*',
-    'new', 'delete']), group2);
+var group3 = prefxs(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&',
+    '*', 'new', 'delete']), group2);
 // var group3 = group2;
 var group4 = bopsl(text.trie(['.', '->']), group3);
 var group5 = bopsl(text.oneOf('*/%'), group4);
@@ -139,9 +147,28 @@ var var_def = parse.bind(parse.eager(parse.enumeration(
     return parse.always(d[0]);
   });
 
-var stmt = lang.then(ws(parse.choice(
-  expr,
-  var_def)), semi);
+var while_loop = parse.late(() =>
+  bind_list(
+    text.string('while'),
+    ws(lang.between(
+      text.character('('),
+      text.character(')'),
+      expr)),
+    ws(stmt),
+    (w, cond, body) => {
+      return new ast.Loop(cond, body)
+    }));
+
+var scope = parse.late(() => lang.between(
+    text.character('{'),
+    text.character('}'),
+    parse.bind(stmts, s => parse.always(new ast.Scope(s)))))
+
+var stmt = ws(parse.choice(
+  while_loop,
+  scope,
+  lang.then(expr, semi),
+  lang.then(var_def, semi)));
 
 var stmts = parse.eager(parse.many(ws(stmt)));
 
@@ -151,15 +178,9 @@ var params = lang.between(
   parse.eager(
     ws(lang.sepBy(ws(text.character(',')), var_decl))));
 
-var fn_def = parse.bind(parse.eager(parse.enumeration(
-  typ,
-  ws(ident),
-  ws(params),
-  ws(lang.between(
-    text.character('{'),
-    text.character('}'),
-    ws(stmts))))),
-  (x) => parse.always(new ast.Fn(x[0], x[1], x[2], x[3])));
+var fn_def = bind_list(
+  typ, ws(ident), ws(params), ws(scope),
+  (typ, name, params, body) => new ast.Fn(typ, name, params, body));
 
 var obj_tmpl = parse.bind(parse.eager(parse.enumeration(
   text.trie(['class', 'struct']),

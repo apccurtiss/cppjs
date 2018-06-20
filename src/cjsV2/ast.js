@@ -1,4 +1,9 @@
 module.exports = {
+  Position: function Position(start, end) {
+    this.start = start;
+    this.end = end;
+  },
+
   Typ: function Typ(typ, ptrs) {
     this.typ = typ;
     this.ptrs = ptrs;
@@ -7,6 +12,10 @@ module.exports = {
   Lit: function Lit(typ, val) {
     this.typ = typ;
     this.val = val;
+  },
+
+  Var: function Var(name) {
+    this.name = name;
   },
 
   Decl: function Decl(typ, name) {
@@ -19,17 +28,19 @@ module.exports = {
     this.e1 = e1;
   },
 
-  Bop: function Bop(op, e1, e2) {
+  Bop: function Bop(op, e1, e2, position) {
     this.op = op;
     this.e1 = e1;
     this.e2 = e2;
+    this.position = position;
   },
 
-  Top: function Top(op, e1, e2) {
+  Top: function Top(op, e1, e2, position) {
     this.op = op;
     this.e1 = e1;
     this.e2 = e2;
     this.e3 = e3;
+    this.position = position;
   },
 
   Fn: function Fn(ret, name, params, body) {
