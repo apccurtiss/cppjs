@@ -1,3 +1,5 @@
+"use strict";
+
 var parse = require('bennu').parse;
 var text = require('bennu').text;
 var lang = require('bennu').lang;
@@ -17,13 +19,10 @@ var bind_list = (...args) => {
     (results) => parse.always(f.apply(null, results)));
 }
 
-var positioned = (p) => {
+var step_point = (p) => {
   return bind_list(
     parse.getPosition, p, parse.getPosition,
-    (start, result, end) => {
-      result.position = new ast.Position(start.index, end.index);
-      return result;
-    })
+    (start, result, end) => new ast.Steppoint({start: start.index, end: end.index}, result))
   };
 
 var semi = parse.expected('semicolon', text.character(';'))
@@ -37,26 +36,30 @@ var ident = ws(parse.bind(parse.cons(
     chars
   ))));
 
+var typ = bind_list(
+  ident,
+  parse.eager(parse.many(ws(text.character('*')))),
+  (typ, ptrs) => new ast.Typ(typ, ptrs.length-1));
+// var typ = parse.expected(
+//   'type',
+//   parse.bind(parse.eager(parse.cons(ident, parse.many(ws(text.character('*'))))),
+//     // (typ) => parse.always(typ)))
+//     (x) => parse.bind(parse.getState,
+//       (state) => {
+//         var typ = x[0];
+//         var ptrs = x.length-1;
+//         if (state.types.indexOf(typ) != -1) {
+//           return parse.always(new ast.Typ(typ, ptrs));
+//         }
+//         else {
+//           return parse.fail('Expected type, got ' + typ)
+//         }
+//       })));
 
-var typ = parse.expected(
-  'type',
-  parse.bind(parse.eager(parse.cons(ident, parse.many(ws(text.character('*'))))),
-    // (typ) => parse.always(typ)))
-    (x) => parse.bind(parse.getState,
-      (state) => {
-        typ = x[0];
-        ptrs = x.length-1;
-        if (state.types.indexOf(typ) != -1) {
-          return parse.always(new ast.Typ(typ, ptrs));
-        }
-        else {
-          return parse.fail('Expected type, got ' + typ)
-        }
-      })));
-
-var var_name = parse.next(
-  parse.expected('variable name, not type', parse.not(parse.look(typ))),
-  ident)
+var var_name = ident;
+// var var_name = parse.next(
+//   parse.expected('variable name, not type', parse.not(parse.look(typ))),
+//   ident)
 
 var number = parse.bind(
   parse.many1(text.digit),
@@ -69,7 +72,7 @@ var atom = parse.late(() => ws(parse.expected(
   'Expected atom',
   parse.choice(
     number,
-    parse.bind(var_name, (n) => parse.always(new ast.Var(n))),
+    parse.bind(ident, (n) => parse.always(new ast.Var(n))),
     lang.between(text.character('('),
                  text.character(')'),
                  expr)))));
@@ -98,7 +101,7 @@ var bopsl = (ops, next) => lang.chainl1(
   parse.bind(
     ws(ops),
     (op) => parse.always((e1, e2) => new ast.Bop(op, e1, e2))),
-  positioned(next));
+  next);
 
 var bopsr = (ops, next) => lang.chainr1(
   parse.bind(
@@ -130,21 +133,21 @@ var group17 = group16; // TODO(alex) throw
 var group18 = bopsl(text.character(','), group17);
 var expr = ws(group18);
 
-var var_decl = parse.bind(parse.eager(parse.enumeration(
-    typ,
-    ws(var_name))),
-  (l) => parse.always(new ast.Decl(l[0], l[1])));
+var var_decl = bind_list(
+  typ,
+  ws(var_name),
+  (typ, name) => new ast.Decl(typ, name));
 
-var var_def = parse.bind(parse.eager(parse.enumeration(
+var var_def = bind_list(
   var_decl,
   parse.optional(undefined, parse.next(
     ws(text.character('=')),
-    expr)))),
-  (d) => {
-    if(d[1]) {
-      d[0].val = d[1];
+    expr)),
+  (decl, assign) => {
+    if(assign) {
+      decl.val = assign;
     }
-    return parse.always(d[0]);
+    return decl;
   });
 
 var while_loop = parse.late(() =>
@@ -153,7 +156,7 @@ var while_loop = parse.late(() =>
     ws(lang.between(
       text.character('('),
       text.character(')'),
-      expr)),
+      step_point(expr))),
     ws(stmt),
     (w, cond, body) => {
       return new ast.Loop(cond, body)
@@ -167,8 +170,8 @@ var scope = parse.late(() => lang.between(
 var stmt = ws(parse.choice(
   while_loop,
   scope,
-  lang.then(expr, semi),
-  lang.then(var_def, semi)));
+  step_point(parse.attempt(lang.then(var_def, semi))),
+  step_point(lang.then(expr, semi))));
 
 var stmts = parse.eager(parse.many(ws(stmt)));
 
@@ -182,42 +185,36 @@ var fn_def = bind_list(
   typ, ws(ident), ws(params), ws(scope),
   (typ, name, params, body) => new ast.Fn(typ, name, params, body));
 
-var obj_tmpl = parse.bind(parse.eager(parse.enumeration(
+var obj_tmpl = bind_list(
   text.trie(['class', 'struct']),
-  parse.bind(ws(parse.optional(undefined, var_name)),
-    (name) => {
-      return parse.modifyState((s) => {
-        if(s.types.indexOf(name) == -1) {
-          s.types.push(name);
-        }
-        return s;
-    })}),
+  ws(parse.optional(undefined, var_name)),
   lang.between(
     text.character('{'),
     text.character('}'),
-    parse.eager(parse.many(ws(parse.either(
+    ws(parse.eager(parse.many(ws(parse.either(
       lang.then(text.trie(['public', 'private']), ws(':')),
-      lang.then(var_decl, ws(semi))))))))),
-  (x) => {
-    var publ = x[0] == 'struct' ? true : false;
-    // var name = x[1];
-    publ = [];
-    priv = [];
-    for(e of x[2]) {
+      lang.then(var_decl, ws(semi))
+    )))))),
+  (type, name, body) => {
+    var publ = type == 'struct';
+    var publ = [];
+    var priv = [];
+    for(var e of body) {
       if(e == 'public') publ = true;
       else if(e == 'private') publ = false;
       else if (publ) publ.push(e);
       else priv.push(e);
     }
-    return parse.always(new ast.ObjTmpl(publ, priv));
+    return new ast.ObjTmpl(name, publ, priv);
   });
 
-// var file = obj_tmpl
-
-var file = parse.eager(lang.then(parse.many(
-  ws(parse.choice(
-    lang.then(obj_tmpl, ws(semi)),
-    fn_def))), parse.eof));
+var file = parse.bind(lang.then(
+    parse.eager(parse.many(
+      ws(parse.choice(
+        lang.then(obj_tmpl, ws(semi)),
+        fn_def)))),
+    parse.eof),
+    (body) => parse.always(new ast.File(body)));
 
 
 function UserData() {
