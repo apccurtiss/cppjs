@@ -1,563 +1,250 @@
-var Types = require("./types.js")
-var memory = require("./memory.js")
+"use strict";
 
-// logical line
-Line = function(ast, start, end) { this.ast = ast; this.start = start; this.end = end; };
+var parse = require('bennu').parse;
+var text = require('bennu').text;
+var lang = require('bennu').lang;
+var nu = require('nu-stream').stream;
+var ast = require('./ast');
 
-MemoryCell = memory.MemoryCell; //function(offset, type, name) { this.offset = offset; this.type = type; this.name = name; };
-Frame = memory.AbstractFrame; /*function() {
-  this.size = 0;
-  this.vars = [];
-  this.push = function(type, name, size) {
-    this.size += !(this.size % size) ? 0 : (size - (this.size % size));
-    this.vars.push(new MemoryCell(this.size, type, name));
-    this.size += size;
-    return this.size - size;
-  }
-}*/
-Members = function() {
-  this.size = 0;
-  this.vars = {};
-  this.push = function(type, name, size) {
-    this.size += !(this.size % size) ? 0 : (size - (this.size % size));
-    this.vars[name] = new memory.MemoryCell(this.size, type);
-    this.size += size;
-    return this.vars[name];
-  }
-  this.get = function(name) {
-    return this.vars[name];
-  }
+var ws = (p) => lang.between(
+  parse.many(text.space),
+  parse.many(text.space),
+  p);
+
+var bind_list = (...args) => {
+  var parsers = args.slice(0, -1);
+  var f = args[args.length - 1];
+  return parse.bind(parse.eager(
+    parse.enumerationa(parsers)),
+    (results) => parse.always(f.apply(null, results)));
 }
 
-Scope = function() {
-  this.typedefs = {};
-  this.objectDefinitions = {};
-  this.vars = {};
-}
+var step_point = (p) => {
+  return bind_list(
+    parse.getPosition, p, parse.getPosition,
+    (start, result, end) => new ast.Steppoint({start: start.index, end: end.index}, result))
+  };
 
-FramePointer = function() {};
-Address = function(base, offset, type, name) { this.base = base; this.offset = offset; this.type = type; this.name = name; };
-CObject = function(name, frame) { this.name = name; this.frame = frame; };
-CFunction = function(type, params, body, frame) { this.type = type; this.params = params; this.body = body; this.frame = frame; };
-Param = function(type, name) { this.type = type; this.name = name; };
-Struct = function(size, members) { this.size = size; this.members = members; };
-Decl = function(type, name, position, val) { this.type = type; this.name = name; this.position = position; this.val = val; };
-Call = function(name, args) { this.name = name; this.args = args; };
-Val = function(type, value) { this.type = type; this.value = value; };
-Bop = function(bop, e1, e2) { this.bop = bop; this.e1 = e1; this.e2 = e2; };
-Uop = function(uop, e1) { this.uop = uop; this.e1 = e1; };
-Return = function(value) { this.value = value; };
-Jump = function(distance, cond) { this.distance = distance; this.cond = cond; };
-// TODO(alex) replace with more generic 'fd' type
-Print = function(text) { this.text = text; };
+var semi = parse.expected('semicolon', text.character(';'))
 
-function ParseError(message, position) {
-  this.name = 'ParseError';
-  this.stack = (new Error()).stack;
-  this.message = message || 'Parse error';
-}
-ParseError.prototype = Object.create(Error.prototype);
-ParseError.prototype.constructor = ParseError;
+var letter_or_under = parse.either(text.letter, text.character('_'))
+var ident = ws(parse.bind(parse.cons(
+  letter_or_under, parse.many(parse.either(letter_or_under, text.digit))),
+  (chars) => parse.always(nu.foldl(
+    (acc, c) => acc + c,
+    '',
+    chars
+  ))));
 
-// prints a position in an easy-to-read manner for error reporting
-function positionToString(position) {
-  var str = `Line ${position.lineNum}:\n`;
-  str += position.line + "\n";
-  str += Array(position.lineIndex).join(" ") + "^";
-  return str;
-}
+var typ = bind_list(
+  ident,
+  parse.eager(parse.many(ws(text.character('*')))),
+  (typ, ptrs) => new ast.Typ(typ, ptrs.length-1));
+// var typ = parse.expected(
+//   'type',
+//   parse.bind(parse.eager(parse.cons(ident, parse.many(ws(text.character('*'))))),
+//     // (typ) => parse.always(typ)))
+//     (x) => parse.bind(parse.getState,
+//       (state) => {
+//         var typ = x[0];
+//         var ptrs = x.length-1;
+//         if (state.types.indexOf(typ) != -1) {
+//           return parse.always(new ast.Typ(typ, ptrs));
+//         }
+//         else {
+//           return parse.fail('Expected type, got ' + typ)
+//         }
+//       })));
 
-module.exports = function(tokens) {
-  var scopes = [new Scope()];
-  var globals = new Frame("Globals");
-  var currentFrame;
-  var functions = {};
-  var currentToken = 0;
-  function pushScope() {
-    scopes.push(new Scope());
-  }
-  function popScope() {
-    scopes.pop();
-  }
-  function varLookup(name) {
-    for(var i = scopes.length-1; i >= 0; i--) {
-      var v;
-      if(v = scopes[i].vars[name]) {
-        return v;
-      }
-    }
-    return undefined;
-  }
-  function objLookup(name) {
-    for(var i = scopes.length-1; i >= 0; i--) {
-      var v;
-      if(v = scopes[i].objectDefinitions[name]) {
-        return v;
-      }
-    }
-    return undefined;
-  }
-  function varInsert(type, ident, offset) {
-    if(scopes[scopes.length-1].vars[ident.string] != undefined) {
-      throw new ParseError(`Variable ${ident.string} already declared before this point:\n${positionToString(ident.position)}`);
-    }
-    base = (currentFrame == globals) ? "global" : "frame";
-    var ret = new Address(base, offset, type, ident.string);
-    scopes[scopes.length-1].vars[ident.string] = ret;
-    return ret;
-  }
-  function objInsert(ident, members) {
-    if(scopes[scopes.length-1].objectDefinitions[ident.string] != undefined) {
-      throw new ParseError(`Object ${ident.string} already declared!`)
-    }
-    scopes[scopes.length-1].objectDefinitions[ident.string] = members;
-  }
+var var_name = ident;
+// var var_name = parse.next(
+//   parse.expected('variable name, not type', parse.not(parse.look(typ))),
+//   ident)
 
-  function nextToken() {
-    if(currentToken == tokens.length) {
-      throw new ParseError("Unexpected end of file");
-    }
-    return tokens[currentToken];
-  }
+var number = parse.bind(
+  parse.many1(text.digit),
+  (ds) => parse.always(new ast.Lit('int', Number(nu.reduce(
+    (d, acc) => d + acc,
+    ds)))));
 
-  function peek(type) {
-    if(type instanceof Function) {
-      var startToken = currentToken;
-      var result;
-      try {
-        result = type();
-      }
-      catch(err) {
-        result = false;
-      }
-      currentToken = startToken;
-      return result;
-    }
-    else {
-      return nextToken().type == type;
-    }
-  }
+// parse.late used to revolve cyclical reference
+var atom = parse.late(() => ws(parse.expected(
+  'Expected atom',
+  parse.choice(
+    number,
+    parse.bind(ident, (n) => parse.always(new ast.Var(n))),
+    lang.between(text.character('('),
+                 text.character(')'),
+                 expr)))));
 
-  function pop(type) {
-    if(!type || peek(type)) {
-      currentToken++;
-      return tokens[currentToken - 1];
-    }
-    return false;
-  }
+var prefxs = (ops, next) => parse.bind(
+  parse.many(ops),
+  (ops) => parse.bind(
+    next,
+    (e) => parse.always(nu.foldr(
+      (acc, op) => new ast.Uop(op, acc),
+      e,
+      ops
+  ))));
 
-  function need(type, message) {
-    var tok = pop(type);
-    if(!tok) {
-      throw new ParseError((message || `Expected type '${type}' but got '${nextToken().type}'`) + "\n" + positionToString(nextToken().position));
-    }
-    return tok;
-  }
+var sufxs = (ops, next) => parse.bind(
+  next,
+  (e) => parse.bind(
+    parse.many(ops),
+    (ops) => parse.always(nu.foldl(
+      (acc, op) => new ast.Uop(op, acc),
+      e,
+      ops
+  ))));
 
-  function peekPattern() {
-    var startToken = currentToken;
-    try {
-      for (var i = 0; i < arguments.length; i++) {
-        if(arguments[i] instanceof Function) {
-          arguments[i]();
-        }
-        else {
-          need(arguments[i]);
-        }
-      }
-    }
-    catch(err) {
-      currentToken = startToken;
-      return false;
-    }
-    currentToken = startToken;
-    return true;
-  }
+var bopsl = (ops, next) => lang.chainl1(
+  parse.bind(
+    ws(ops),
+    (op) => parse.always((e1, e2) => new ast.Bop(op, e1, e2))),
+  next);
 
-  function needPattern() {
-    var results = [];
-    for (var i = 0; i < arguments.length; i++) {
-      if(arguments[i] instanceof Function) {
-        // use function to parse token stream
-        results.push(arguments[i]());
-      }
-      else {
-        need(arguments[i]);
-      }
-    }
-    return results;
-  }
+var bopsr = (ops, next) => lang.chainr1(
+  parse.bind(
+    ws(ops),
+    (op) => parse.always((e1, e2) => new ast.Bop(op, e1, e2))),
+  next);
 
-  function parseList(start, end, delim, parseFunction) {
-    var list = [];
-    need(start);
-    if(!pop(end)) {
-      do {
-        list.push(parseFunction());
-      } while(pop(delim));
-      need(end);
-    }
-    return list;
-  }
+// https://msdn.microsoft.com/en-us/library/126fe14k.aspx
+var group1 = bopsl(text.string('::'), atom);
+var group2 = group1; // TODO(alex): Postfixes
+// TODO(alex): Add casting
+var group3 = prefxs(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&',
+    '*', 'new', 'delete']), group2);
+// var group3 = group2;
+var group4 = bopsl(text.trie(['.', '->']), group3);
+var group5 = bopsl(text.oneOf('*/%'), group4);
+var group6 = bopsl(text.oneOf('+-'), group5);
+var group7 = bopsl(text.trie(['<<', '>>']), group6);
+var group8 = bopsl(text.trie(['<', '>', '<=', '>=']), group7);
+var group9 = bopsl(text.trie(['==', '!=']), group8);
+var group10 = bopsl(text.character('&'), group9);
+var group11 = bopsl(text.character('^'), group10);
+var group12 = bopsl(text.character('|'), group11);
+var group13 = bopsl(text.string('&&'), group12);
+var group14 = bopsl(text.string('||'), group13);
+var group15 = group14; // TODO(alex) conditional
+var group16 = bopsr(text.trie(['=', '*=', '/=', '+=', '-=']), group15);
+var group17 = group16; // TODO(alex) throw
+var group18 = bopsl(text.character(','), group17);
+var expr = ws(group18);
 
-  function parseExpr() {
-    // function names refer to levels of precedence, as in http://en.cppreference.com/w/c/language/operator_precedence
-    function level14() {
-      function helper(acc) {
-        if(pop("Assign")) {
-          return helper(new Bop("Assign", acc, level7()));
-        }
-        else {
-          return acc;
-        }
-      }
-      return helper(level7());
-    }
+var var_decl = bind_list(
+  typ,
+  ws(var_name),
+  (typ, name) => new ast.Decl(typ, name));
 
-    function level7() {
-      function helper(acc) {
-        if(pop("Eq")) {
-          return helper(new Bop("Eq", acc, level6()));
-        }
-        else if(pop("Neq")) {
-          return helper(new Bop("Neq", acc, level6()));
-        }
-        else {
-          return acc;
-        }
-      }
-      return helper(level6());
+var var_def = bind_list(
+  var_decl,
+  parse.optional(undefined, parse.next(
+    ws(text.character('=')),
+    expr)),
+  (decl, assign) => {
+    if(assign) {
+      decl.val = assign;
     }
-
-    function level6() {
-      function helper(acc) {
-        var cmp;
-        if(cmp = (pop("Eq") || pop("Neq") || pop("Lt") || pop("Gt") || pop("Le") || pop("Ge"))) {
-          return helper(new Bop(cmp.type, acc, level4()));
-        }
-        else {
-          return acc;
-        }
-      }
-      return helper(level4());
-    }
-
-    function level4() {
-      function helper(acc) {
-        if(pop("Plus")) {
-          return helper(new Bop("Plus", acc, level3()));
-        }
-        else if(pop("Minus")) {
-          return helper(new Bop("Minus", acc, level3()));
-        }
-        else {
-          return acc;
-        }
-      }
-      return helper(level3());
-    }
-
-    function level3() {
-      function helper(acc) {
-        if(pop("Star")) {
-          return helper(new Bop("Mul", acc, level2()));
-        }
-        else if(pop("Div")) {
-          return helper(new Bop("Div", acc, level2()));
-        }
-        else if(pop("Mod")) {
-          return helper(new Bop("Mod", acc, level2()));
-        }
-        else {
-          return acc;
-        }
-      }
-      return helper(level2());
-    }
-
-    function level2() {
-      function helper() {
-        if(pop("Star")) {
-          return new Uop("Deref", helper());
-        }
-        else if(pop("SingleAnd")) {
-          return new Uop("Addr", helper());
-        }
-        else {
-          return level1();
-        }
-      }
-      return helper();
-    }
-/*var test4 = `
-struct node {
-  struct node *next;
-}
-int main() {
-  struct node a, b, c, *current;
-  a.next = &b;
-  b.next = &c;
-  c.next = 0;
-
-  current = &a;
-  while(current != 0) {
-    current = (*current).next;
-  }
-}`;*/
-
-// base(current), offset(current)
-// base(current), offset(next) + Deref(base(current), offset(current))
-    function level1() {
-      function helper(acc) {
-        if(pop("Dot")) {
-          var objType = Types.typeof(acc).name;
-          var fieldName = need("Ident").string;
-          var obj = objLookup(objType);
-          var field = obj.get(fieldName);
-          var base = (acc.base != undefined) ? acc.base : acc;
-          var offset = (acc.offset != undefined) ? acc.offset + field.offset : field.offset;
-          if(field) {
-            return new Address(base, offset, field.type, `${acc.name}.${fieldName}`)
-          }
-          throw new ParseError(`An object of type '${objType}' has no member ${fieldName}`);
-        }
-        else {
-          return acc;
-        }
-      }
-      return helper(atom());
-    }
-
-    function atom() {
-      var a;
-      if(a = pop("LitInt")) {
-        return new Val("int", parseInt(a.string));
-      }
-      else if(a = pop("Ident")) {
-        // Function
-        if(peek("OParen")) {
-          var pl = parseList("OParen", "CParen", "Comma", parseExpr);
-          return new Call(a.string, pl);
-        }
-        // Variable
-        else {
-          var v = varLookup(a.string);
-          if(v == undefined) {
-            var x = a.string;
-            var y = positionToString(a.position);
-            console.log(`Variable '${x}' has not been declared before it was used:\n${y}`);
-            throw new ParseError();
-          }
-          return v;
-        }
-      }
-      else if(pop("OParen")) {
-        var p = parseExpr();
-        need("CParen");
-        return p;
-      }
-      else {
-        throw new ParseError(`Unexpected token of type '${nextToken().type}':\n${positionToString(nextToken().position)}`);
-      }
-    }
-
-    return level14();
-  }
-
-  function positionOf(parseFunction) {
-    var start = nextToken().position;
-    var ast = parseFunction();
-    var end = nextToken().position;
-    return new Line(ast, start, end);
-  }
-
-  function parseLogicalLine() {
-    var start = nextToken().position;
-    var ret;
-    // return statement
-    if(pop("Return")) {
-      ret = [new Line(new Return(parseExpr()), start, nextToken().position)];
-      need("Semi", "A line should have ended with a semicolon before this point");
-    }
-    // variable declaration
-    else if(peek(parseType)) {
-      ret = parseVarDecls();
-    }
-    // normal expression
-    else {
-      ret = [new Line(parseExpr(), start, nextToken().position)];
-      need("Semi", "A line should have ended with a semicolon before this point");
-    }
-    return ret;
-  }
-
-  function parseLogicalBlock() {
-    function expression() {
-      return positionOf(parseExpr);
-    }
-    if(pop("If")) {
-      var cond = needPattern("OParen", expression, "CParen")[0];
-      var body = parseLogicalBlock();
-      // modify the condition to jump to end of the body if it's not met
-      cond.ast = new Jump(body.length + 1, new Uop("Not", cond.ast));
-      return [cond].concat(body);
-    }
-    else if(pop("For")) {
-      var header = needPattern("OParen", expression, "Semi", expression, "Semi", expression, "CParen");
-      var doFirst = header[0], cond = header[1], inc = header[2];
-      var body = parseLogicalBlock();
-      // modify the condition to jump to end of the body if it's not met
-      cond.ast = new Jump(body.length + 3, new Uop("Not", cond.ast));
-      return [doFirst].concat([cond]).concat(body).concat([inc]).concat(new Line(new Jump(-body.length - 2)));
-    }
-    else if(pop("While")) {
-      var cond = needPattern("OParen", expression, "CParen")[0];
-      var body = parseLogicalBlock();
-      // modify the condition to jump to end of the body if it's not met
-      cond.ast = new Jump(body.length + 2, new Uop("Not", cond.ast));
-      return [cond].concat(body).concat(new Line(new Jump(-body.length - 1)));
-    }
-    else if(peek("OBrace")) {
-      return parseScope();
-    }
-    else {
-      return parseLogicalLine();
-    }
-  }
-
-  function parseScope() {
-    pushScope();
-    var body = [];
-    need("OBrace");
-    while(!pop("CBrace")) {
-      body = body.concat(parseLogicalBlock());
-    }
-    popScope();
-    return body;
-  }
-
-  function parseType() {
-    if(pop("Struct")) {
-      return new Types.Obj(need("Ident").string);
-    }
-    else {
-      return need("Type").string;
-    }
-  }
-
-  function sizeof(t) {
-    if(t instanceof Types.Arr) {
-      if(t.size) {
-        return sizeof(t.type) * t.size;
-      }
-      else {
-        return undefined;
-      }
-    }
-    else if(t instanceof Types.Ptr) {
-      return Types.sizeof("ptr");
-    }
-    else if(t instanceof Types.Obj) {
-      return objLookup(t.name).size;
-    }
-    else {
-      return Types.sizeof(t);
-    }
-  }
-
-  function parseStructDecl() {
-    need("Struct");
-    var ident = pop("Ident");
-    var members = new Members();
-    need("OBrace");
-    while(!pop("CBrace")) {
-      var type = parseType();
-      while(pop("Star")) {
-        type = new Types.Ptr(type);
-      }
-      var member = need("Ident").string;
-      while(pop("OBracket")) {
-        var size = parseExpr();
-        need("CBracket");
-        type = new Types.Arr(type, size);
-      }
-      members.push(type, member, sizeof(type));
-      need("Semi");
-    }
-    objInsert(ident, members);
-    return new CObject(ident.string, members);
-  }
-
-  function parseVarDecls() {
-    var start = nextToken().position;
-    var baseType = parseType();
-    var decls = [];
-    while(true) {
-      var type = baseType;
-      // pointer modifyer
-      while(pop("Star")) {
-        type = new Types.Ptr(type);
-      }
-      var ident = need("Ident");
-      // array modifyer
-      while(pop("OBracket")) {
-        var size = parseExpr();
-        need("CBracket");
-        type = new Types.Arr(type, size);
-      }
-      var value = pop("Assign") ? parseExpr() : undefined;
-      var offset = currentFrame.push(type, ident.string, sizeof(type));
-      varInsert(type, ident, offset);
-      decls.push(new Line(new Decl(type, ident.string, offset, value), start, nextToken().position));
-      if(pop("Comma")) {
-        start = nextToken().position;
-      }
-      else {
-        break;
-      }
-    }
-    need("Semi");
-    return decls;
-  }
-
-  function parseFunctionDecl() {
-    var type = parseType();
-    var name = need("Ident").string;
-    if (functions[name] != undefined) {
-      throw new ParseError(`function ${name} is defined at two locations`);
-    }
-    currentFrame = new Frame(name);
-    var params = parseList("OParen", "CParen", "Comma", () => {
-      var type = need("Type").string;
-      var ident = need("Ident");
-      var offset = currentFrame.push(type, ident.string, sizeof(type));
-      varInsert(type, ident, offset);
-      return new Param(type, ident.string);
-    });
-
-    var body = parseScope();
-    if(!(body[body.length-1] instanceof Return)) {
-      body.push(new Line(new Return()));
-    }
-
-    var decl = new CFunction(type, params, body, currentFrame);
-    functions[name] = decl;
     return decl;
-  }
+  });
 
-  var globalData = [];
-  while(currentToken != tokens.length) {
-    currentFrame = globals;
-    if(peek("Struct")) {
-      parseStructDecl();
+var while_loop = parse.late(() =>
+  bind_list(
+    text.string('while'),
+    ws(lang.between(
+      text.character('('),
+      text.character(')'),
+      step_point(expr))),
+    ws(stmt),
+    (w, cond, body) => {
+      return new ast.Loop(cond, body)
+    }));
+
+var scope = parse.late(() => lang.between(
+    text.character('{'),
+    text.character('}'),
+    parse.bind(stmts, s => parse.always(new ast.Scope(s)))))
+
+var stmt = ws(parse.choice(
+  while_loop,
+  scope,
+  step_point(parse.attempt(lang.then(var_def, semi))),
+  step_point(lang.then(expr, semi))));
+
+var stmts = parse.eager(parse.many(ws(stmt)));
+
+var params = lang.between(
+  text.character('('),
+  text.character(')'),
+  parse.eager(
+    ws(lang.sepBy(ws(text.character(',')), var_decl))));
+
+var fn_def = bind_list(
+  typ, ws(ident), ws(params), ws(scope),
+  (typ, name, params, body) => new ast.Fn(typ, name, params, body));
+
+var obj_tmpl = bind_list(
+  text.trie(['class', 'struct']),
+  ws(parse.optional(undefined, var_name)),
+  lang.between(
+    text.character('{'),
+    text.character('}'),
+    ws(parse.eager(parse.many(ws(parse.either(
+      lang.then(text.trie(['public', 'private']), ws(':')),
+      lang.then(var_decl, ws(semi))
+    )))))),
+  (type, name, body) => {
+    var publ = type == 'struct';
+    var publ = [];
+    var priv = [];
+    for(var e of body) {
+      if(e == 'public') publ = true;
+      else if(e == 'private') publ = false;
+      else if (publ) publ.push(e);
+      else priv.push(e);
     }
-    else if(peekPattern("Type", () => { while(pop("Star")){} }, "Ident", "OParen")) {
-      parseFunctionDecl();
-    }
-    else {
-      var decls = parseVarDecls();
-      globalData = globalData.concat(decls);
-    }
-  }
-  return { functions: functions, globalObjects: scopes[0].objectDefinitions, globals: globals, globalData: globalData };
+    return new ast.ObjTmpl(name, publ, priv);
+  });
+
+var file = parse.bind(lang.then(
+    parse.eager(parse.many(
+      ws(parse.choice(
+        lang.then(obj_tmpl, ws(semi)),
+        fn_def)))),
+    parse.eof),
+    (body) => parse.always(new ast.File(body)));
+
+
+function UserData() {
+  this.types = ['int', 'char', 'float'];
+}
+var parseFile = (s) => parse.run(file, s, new UserData())
+var parseFn = (s) => parse.run(fn_def, s, new UserData())
+var parseExpr = (s) => parse.run(expr, s, new UserData())
+var parseStmt = (s) => parse.run(stmt, s, new UserData())
+
+// parseFile(');
+// console.log(parse.run(ident, 's'))
+// console.log(parse.run(ident, 'asdf'))
+// console.log(parse.run(ident, '_A1'))
+// console.log(parse.run(ident, '_A64Hsfb'))
+// parse.run(
+//   bind_list(text.character('a'), (a) => (parse.always(a))
+//   ),
+//   'asdf')
+// parse.run(
+//   parse.choice(
+//     parse.attempt(lang.then(text.character('a'), text.character('c'))),
+//     parse.attempt(lang.then(text.character('a'), text.character('b')))
+//   ),
+//   'abc')
+// console.log(parseFile('struct node { int key; }; int main () { node asdf; }'))
+
+module.exports = {
+  parseFile: parseFile,
+  parseFn: parseFn,
+  parseExpr: parseExpr,
+  parseStmt: parseStmt,
 }
