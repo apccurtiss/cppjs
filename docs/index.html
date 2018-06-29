@@ -1,47 +1,61 @@
 <!DOCTYPE html>
 <html lang="en-US">
-<head>
-  <meta charset="UTF-8" />
-  <title>C.js</title>
-  <link rel="stylesheet" type="text/css" href="./style.css">
-</head>
-<body>
+  <head>
+    <meta charset="UTF-8" />
+    <title>C-learn</title>
+    <link rel="stylesheet" type="text/css" href="./style.css">
+    <link href="http://visjs.org/dist/vis.css" rel="stylesheet" type="text/css" />
+  </head>
+  <body>
+    <button type="button" class="button" id="compile">Compile</button>
+    <button type="button" class="button" id="run" style="display: none;">Run</button>
+    <button type="button" class="button" id="step" style="display: none;">Step</button>
+    <button type="button" class="button" id="reset" style="display: none;">Reset</button>
+    <!-- <button type="button" class="button" id="hide" style="display: none;">Hide Data Structure</button> -->
+    <div id="disclaimer"><span id="cjs">C-learn.js: </span><span id="alpha">ALPHA </span><span id="joke">( Version 0.0.Broken )</span></div>
+<div id="editor">struct Node {
+  int key;
+  Node *next;
+};
 
-<button type="button" class="button" id="run">Run</button>
-<button type="button" class="button" id="step" style="display: none;">Step</button>
-<button type="button" class="button" id="reset" style="display: none;">Reset</button>
-<button type="button" class="button" id="hide" style="display: none;">Hide Data Structure</button>
-<div id="disclaimer"><span id="cjs">C.js: </span><span id="alpha">ALPHA </span><span id="joke">( Version 0.0.Broken )</span></div>
-<div id="editor">struct node {
-  struct node *next;
-}
-
-int main() {
-  struct node a, b, c, *current;
-  a.next = &b;
-  b.next = &c;
-  c.next = 0;
-
-  *current = &a;
-  while(current != 0) {
-      current = (*current).next;
+int main(){
+  Node *a = new Node;
+  a->key = 1;
+  cout << a->key;
+  a->next = new Node;
+  a->next->key = 2;
+  cout << a->next->key;
+  a->next->next = 0;
+  while(a != 0) {
+    cout << a->key;
+    a = a->next;
   }
 }</div>
-<div id="output" style="display: none;">
-<div class="output" id="stdout">
-  Output:
-</div>
-<div class="output" id="stack">
-  Variables:
-</div>
-</div>
+    <div id="stdout" style="display: none;">
+      user@c-learn:~$ ./program<br/>
+    </div>
+    <div id="memory">
+      <div id="heap"></div>
+      <!-- <canvas id="canvas" width='300px' height='300px'></canvas> -->
+      <div id="stack">
+        <div class="function-frame" id="function-frame-template" style="display: none">
+          <button class="function-name"></button>
+          <div class="function-vars">
+            <div id="function-var-template" style="display: none">
+              <span class="function-var-type"></span> <span class="function-var-name"></span>: <span class="function-var-value"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-<canvas id="canvas" width='300px' height='300px'></canvas>
-
-<script src="./jquery-3.1.1.min.js"></script>
-<script src="./ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
-<script src="./canvas.js" type="text/javascript" charset="utf-8"></script>
-<script src="./cjs-web.js" type="text/javascript" charset="utf-8"></script>
-<script src="./editor.js" type="text/javascript" charset="utf-8"></script>
-</body>
+    <script src="./jquery-3.1.1.min.js"></script>
+    <script src="./ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
+    <!-- <script src="./canvas.js" type="text/javascript" charset="utf-8"></script> -->
+    <!-- <script src="./editor.js" type="text/javascript" charset="utf-8"></script> -->
+    <!-- <script src="http://d3js.org/d3.v5.min.js"></script> -->
+    <script src="http://visjs.org/dist/vis.js"></script>
+    <script type="text/javascript" src="c-learn.js"></script>
+    <script type="text/javascript" src="script.js"></script>
+  </body>
 </html>

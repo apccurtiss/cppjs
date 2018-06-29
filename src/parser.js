@@ -158,8 +158,32 @@ var while_loop = parse.late(() =>
       text.character(')'),
       step_point(expr))),
     ws(stmt),
-    (w, cond, body) => {
+    (_, cond, body) => {
       return new ast.Loop(cond, body)
+    }));
+
+var for_loop = parse.late(() =>
+  bind_list(
+    text.string('for'),
+    parse.next(
+      ws(text.character('(')),
+      step_point(parse.either(parse.attempt(var_def), expr))),
+    lang.between(
+      ws(semi),
+      ws(semi),
+      step_point(expr)),
+    lang.then(
+      step_point(expr),
+      ws(text.character(')'))),
+    ws(stmt),
+    (_, init, cond, inc, body) => {
+      return new ast.Scope([
+        init,
+        new ast.Loop(cond, new ast.Scope([
+          body,
+          inc,
+        ])),
+      ]);
     }));
 
 var scope = parse.late(() => lang.between(
@@ -169,6 +193,7 @@ var scope = parse.late(() => lang.between(
 
 var stmt = ws(parse.choice(
   while_loop,
+  for_loop,
   scope,
   step_point(parse.attempt(lang.then(var_def, semi))),
   step_point(lang.then(expr, semi))));

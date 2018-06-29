@@ -5,8 +5,10 @@ var parser = require('./parser');
 var compiler = require('./compiler');
 
 function Program(options) {
-  this.onPrint = options.onPrint || ((text) => {console.log(text)});
+  this.code = options.code;
+  this.onPrint = options.onPrint || ((text) => {});
   this.onFnCall = options.onFnCall || ((name, vars) => {});
+  this.onFnEnd = options.onFnEnd || ((name, ret) => {});
   this.onDynamicAllocation = options.onDynamicAllocation || ((type, loc) => {});
   this.onAssign = options.onAssign || ((name, val) => {});
   this.errorFormat = options.errorFormat || 'cjs';
@@ -23,7 +25,7 @@ function Program(options) {
   this.memory = {
     '!print': new ast.Builtin((p) => {
       // console.log("Printing: ", p);
-      console.log(this.getVal(p));
+      this.onPrint(String(this.getVal(p)));
       return new ast.Var('!print');
     }),
     '!malloc': new ast.Builtin((typ) => {
@@ -83,11 +85,11 @@ function Program(options) {
   }
 
   var parsed_file = parser.parseFile(options.code);
-  console.log("Parsed file: ")
-  console.log(JSON.stringify(parsed_file, null, 1));
+  // console.log("Parsed file: ")
+  // console.log(JSON.stringify(parsed_file, null, 1));
   var compiled_file = compiler.compile(parsed_file);
-  console.log("Preprocessed file: ")
-  console.log(JSON.stringify(compiled_file, null, 1));
+  // console.log("Preprocessed file: ")
+  // console.log(JSON.stringify(compiled_file, null, 1));
 
   for(var decl of compiled_file.decls) {
     if(decl instanceof ast.Fn) {
@@ -173,8 +175,11 @@ function Program(options) {
         }
         else {
           console.assert(current.args.length == 0);
-          this.onFnCall(v1.name);
-          return (_) => this.stepgen(v1.body, next)
+          this.onFnCall(v1.name, v1.frame);
+          return (_) => this.stepgen(v1.body, (r) => {
+            this.onFnEnd(v1.name, r);
+            next(r);
+          })
         }
       });
     }
@@ -223,12 +228,13 @@ function Program(options) {
   // console.log(stepper)
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
     this.position = undefined;
-    this.done = true;
     return null;
   })();
 
   this.step = function() {
-    stepper = stepper();
+    if(stepper != null) {
+      stepper = stepper();
+    }
     return stepper;
   }
 
@@ -239,4 +245,5 @@ function Program(options) {
 
 module.exports = {
   Program: Program,
+  ast: ast,
 }

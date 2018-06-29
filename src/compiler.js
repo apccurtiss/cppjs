@@ -1,12 +1,5 @@
 var ast = require('./ast');
 
-var types = {
-  'char': 1,
-  'bool': 1,
-  'int': 4,
-  'float': 4,
-}
-
 function cmpl(node) {
   if(node instanceof ast.Typ || node instanceof ast.Lit ||
      node instanceof ast.Var || node instanceof ast.Ident ||
@@ -16,7 +9,6 @@ function cmpl(node) {
   else if(node instanceof ast.Decl) {
     if(node.val) {
       return new ast.Bop('=', new ast.Var(node.name), cmpl(node.val));
-      // return new ast.Assign(new ast.Var(node.name), cmpl(node.val));
     }
   }
   else if(node instanceof ast.Uop) {
@@ -45,7 +37,14 @@ function cmpl(node) {
     return new ast.Top(node.op, cmpl(node.e1), cmpl(node.e2), cmpl(node.e3));
   }
   else if(node instanceof ast.Fn) {
-    return new ast.Fn(node.ret, node.name, node.params, cmpl(node.body));
+    frame = {};
+    var frameWalker = new ast.Walker((node) => {
+      if(node instanceof ast.Decl) {
+        frame[node.name] = node.typ;
+      }
+    });
+    frameWalker.walk(node.body);
+    return new ast.Fn(node.ret, node.name, node.params, cmpl(node.body), frame);
   }
   else if(node instanceof ast.Call) {
     return new ast.Call(cmpl(node.fn), node.args.map(cmpl));

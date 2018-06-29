@@ -2,21 +2,23 @@ body {
   background: #264543;
 }
 
+div {
+  -webkit-box-sizing: border-box; /* Safari/Chrome, other WebKit */
+  -moz-box-sizing: border-box; /* Firefox, other Gecko */
+  box-sizing: border-box; /* Opera/IE 8+ */
+}
+
 .button {
   height: 30px;
   width: 100px;
-  border-radius: 5px;
-}
-
-#hide {
-  width: 200px;
+  /* border-radius: 5px; */
 }
 
 #disclaimer {
   background: #f0d0c8;
   border: 1px solid red;
   padding: 5px;
-  border-radius: 5px;
+  /* border-radius: 5px; */
   font-family: sans-serif;
   float:right;
 }
@@ -36,7 +38,7 @@ body {
 }
 
 #editor {
-  border-radius: 15px;
+  /* border-radius: 15px; */
   position: absolute;
   top: 5%;
   right: 0;
@@ -47,29 +49,86 @@ body {
   width: calc(100% - 10px);
 }
 
-#output {
+#stdout {
   position: absolute;
   top: 70%;
   left: 0;
-  border-radius: 15px;
+  /* border-radius: 15px; */
   height: 27.5%;
   margin: 5px;
   background: #FFF;
-  width: calc(100% - 10px);
+  width: calc(50% - 10px);
+  padding: 10px;
+  font-family: monospace;
+  background: black;
+  color: green;
 }
 
-.output {
-  width: calc(50% - 20px);
-  height: calc(100% - 20px);
+#memory {
+  position: absolute;
+  top: 5%;
+  right: 0;
+  bottom: 0;
+  left: 50%;
+  /* border-radius: 15px; */
+  margin: 5px;
+  background: white;
+  width: calc(50% - 10px);
+  height: 90%;
+}
+
+#heap {
+  width:100%;
+  height:50%;
+  background-color: #DAE4E4;
+}
+
+#stack {
+  width: 100%;
+  height: 50%;
+}
+
+.function-var-name, .function-var-type {
   float: left;
-  margin: 10px;
-  padding: 10px;
-  border-radius: 15px;
-  border: 1px solid #ececec;
-  font-family: sans-serif;
-  -webkit-box-sizing: border-box; /* Safari/Chrome, other WebKit */
-  -moz-box-sizing: border-box;    /* Firefox, other Gecko */
-  box-sizing: border-box;         /* Opera/IE 8+ */
+  margin-right: 5px;
+}
+
+.function-var-value {
+  float: right;
+}
+
+.function-name {
+    background-color: #eee;
+    color: #444;
+    cursor: pointer;
+    padding: 18px;
+    width: 100%;
+    text-align: left;
+    border: none;
+    outline: none;
+    transition: 0.4s;
+}
+
+.active, .function-name:hover {
+    background-color: #ccc;
+}
+
+.function-name:after {
+    content: '\02795'; /* Unicode character for "plus" sign (+) */
+    font-size: 13px;
+    color: #777;
+    float: right;
+    margin-left: 5px;
+}
+
+.active:after {
+    content: "\2796"; /* Unicode character for "minus" sign (-) */
+}
+
+.function-vars {
+    padding: 0 18px;
+    background-color: white;
+    overflow: hidden;
 }
 
 #canvas {
@@ -78,7 +137,7 @@ body {
   right: 0;
   bottom: 0;
   left: 50%;
-  border-radius: 15px;
+  /* border-radius: 15px; */
   margin: 5px;
   background: white;
   width: calc(50% - 10px);
