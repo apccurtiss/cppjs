@@ -1,4 +1,4 @@
-var memory = require('../src/runtime.js');
+var runtime = require('../src/runtime.js');
 var test = require('tape');
 
 // test('setting and loading values from memory', function(t) {

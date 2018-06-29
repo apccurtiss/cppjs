@@ -1,11 +1,16 @@
-var parse = require("../src/compiler.js");
+var compiler = require("../src/compiler.js");
+var parser = require("../src/parser.js");
 var test = require("tape");
+
+console.log(compiler.compileFile(`int main() { 1; }`))
 
 test("creating and initializing various variables", function(t) {
   t.plan(1);
 
-  t.doesNotThrow(() => new Runtime({ code: `int main() { }` }),
-    undefined, "basic function declaration")
+  // t.throws(() => compiler.compileFile(`int main() { }`));
+  t.doesNotThrow(() => compiler.compileFile(`int main() { }`));
+
+  t.end();
 
   // t.doesNotThrow(() => parse(tokenize(
   //   `int **x = 4;

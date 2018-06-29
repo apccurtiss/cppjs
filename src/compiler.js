@@ -1,9 +1,10 @@
 var ast = require('./ast');
+var parser = require('./parser');
 
 function cmpl(node) {
-  if(node instanceof ast.Typ || node instanceof ast.Lit ||
-     node instanceof ast.Var || node instanceof ast.Ident ||
-     node instanceof ast.ObjTmpl) {
+  if(node instanceof ast.BasicTyp || node instanceof ast.Ptr || node instanceof ast.Arr ||
+     node instanceof ast.ObjTyp || node instanceof ast.Lit || node instanceof ast.Var ||
+     node instanceof ast.Ident || node instanceof ast.ObjTmpl) {
     return node;
   }
   else if(node instanceof ast.Decl) {
@@ -70,5 +71,7 @@ function cmpl(node) {
 }
 
 module.exports = {
-  compile: cmpl,
+  compileFile: (code) => cmpl(parser.parseFile(code)),
+  compileStmt: (code) => cmpl(parser.parseStmt(code)),
+  compileExpr: (code) => cmpl(parser.parseExpr(code)),
 };

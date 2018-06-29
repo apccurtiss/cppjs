@@ -1,20 +1,54 @@
-function Typ(typ, ptrs) {
+// function Typ(typ, ptrs) {
+//   this.typ = typ;
+//   this.ptrs = ptrs;
+//   this.toString = () => {
+//     return typ + Array(ptrs+1).join('*');
+//   }
+// }
+
+// Types
+function BasicTyp(typ) {
   this.typ = typ;
-  this.ptrs = ptrs;
-  this.toString = () => {
-    return typ + Array(ptrs+1).join('*');
-  }
+  this.toString = () => typ;
 }
+
+function Ptr(typ) {
+  this.typ = typ;
+  this.toString = () => typ.toString() + '*';
+}
+
+function Arr(typ, size) {
+  this.typ = typ;
+  this.size = size;
+  this.toString = () => typ.toString() + (size == undefined) ? '[]' : '[' + size + ']';
+}
+
+function ObjTyp(name, fields) {
+  this.name = name;
+  this.fields = fields;
+  this.toString = () => {
+    if(name != undefined) {
+      return name;
+    }
+    let ret = '{ ';
+    for(field in fields) {
+      ret += fields[field].toString + ' ' + field + '; ';
+    }
+    return ret + ' }';
+  };
+}
+
+// Basic AST elements
 
 function Lit(typ, val) {
   this.typ = typ;
   this.val = val;
 }
 
-function Ptr(typ, addr) {
-  this.typ = typ;
-  this.addr = addr;
-}
+// function Ptr(typ, addr) {
+//   this.typ = typ;
+//   this.addr = addr;
+// }
 
 function Ident(name) {
   this.name = name;
@@ -121,9 +155,9 @@ function Obj(typ, publ, priv) {
 function Walker(fn) {
   function walk(node) {
     fn(node);
-    if(node instanceof Typ || node instanceof Lit ||
-       node instanceof Var || node instanceof Ident ||
-       node instanceof ObjTmpl) {
+    if(node instanceof BasicTyp || node instanceof Ptr || node instanceof Arr ||
+       node instanceof ObjTyp || node instanceof Lit || node instanceof Var ||
+       node instanceof Ident || node instanceof ObjTmpl) {
       return node;
     }
     else if(node instanceof Decl) {
@@ -168,9 +202,13 @@ function Walker(fn) {
 }
 
 module.exports = {
-  Typ: Typ,
-  Lit: Lit,
+  // Typ: Typ,
+  BasicTyp: BasicTyp,
   Ptr: Ptr,
+  Arr: Arr,
+  ObjTyp: ObjTyp,
+  Lit: Lit,
+  // Ptr: Ptr,
   Ident: Ident,
   Var: Var,
   Decl: Decl,

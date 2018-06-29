@@ -1,7 +1,6 @@
 "use strict";
 
 var ast = require('./ast');
-var parser = require('./parser');
 var compiler = require('./compiler');
 
 function Program(options) {
@@ -84,11 +83,8 @@ function Program(options) {
     }
   }
 
-  var parsed_file = parser.parseFile(options.code);
-  // console.log("Parsed file: ")
-  // console.log(JSON.stringify(parsed_file, null, 1));
-  var compiled_file = compiler.compile(parsed_file);
-  // console.log("Preprocessed file: ")
+  var compiled_file = compiler.compileFile(options.code);
+  // console.log("Compiled file: ")
   // console.log(JSON.stringify(compiled_file, null, 1));
 
   for(var decl of compiled_file.decls) {

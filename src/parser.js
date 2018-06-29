@@ -39,27 +39,9 @@ var ident = ws(parse.bind(parse.cons(
 var typ = bind_list(
   ident,
   parse.eager(parse.many(ws(text.character('*')))),
-  (typ, ptrs) => new ast.Typ(typ, ptrs.length-1));
-// var typ = parse.expected(
-//   'type',
-//   parse.bind(parse.eager(parse.cons(ident, parse.many(ws(text.character('*'))))),
-//     // (typ) => parse.always(typ)))
-//     (x) => parse.bind(parse.getState,
-//       (state) => {
-//         var typ = x[0];
-//         var ptrs = x.length-1;
-//         if (state.types.indexOf(typ) != -1) {
-//           return parse.always(new ast.Typ(typ, ptrs));
-//         }
-//         else {
-//           return parse.fail('Expected type, got ' + typ)
-//         }
-//       })));
+  (typ, ptrs) => ptrs.reduce((acc, _) => new ast.Ptr(acc), new ast.BasicTyp(typ)));
 
 var var_name = ident;
-// var var_name = parse.next(
-//   parse.expected('variable name, not type', parse.not(parse.look(typ))),
-//   ident)
 
 var number = parse.bind(
   parse.many1(text.digit),
@@ -189,7 +171,7 @@ var for_loop = parse.late(() =>
 var scope = parse.late(() => lang.between(
     text.character('{'),
     text.character('}'),
-    parse.bind(stmts, s => parse.always(new ast.Scope(s)))))
+    parse.bind(ws(stmts), s => parse.always(new ast.Scope(s)))))
 
 var stmt = ws(parse.choice(
   while_loop,
@@ -241,14 +223,10 @@ var file = parse.bind(lang.then(
     parse.eof),
     (body) => parse.always(new ast.File(body)));
 
-
-function UserData() {
-  this.types = ['int', 'char', 'float'];
-}
-var parseFile = (s) => parse.run(file, s, new UserData())
-var parseFn = (s) => parse.run(fn_def, s, new UserData())
-var parseExpr = (s) => parse.run(expr, s, new UserData())
-var parseStmt = (s) => parse.run(stmt, s, new UserData())
+var parseFile = (s) => parse.run(file, s)
+var parseFn = (s) => parse.run(fn_def, s)
+var parseExpr = (s) => parse.run(expr, s)
+var parseStmt = (s) => parse.run(stmt, s)
 
 // parseFile(');
 // console.log(parse.run(ident, 's'))
