@@ -2,16 +2,75 @@ var compiler = require("../src/compiler.js");
 var parser = require("../src/parser.js");
 var test = require("tape");
 
-console.log(compiler.compileFile(`int main() { 1; }`))
+test('Basic arithmatic expressions', function(t) {
+  t.plan(9);
 
-test("creating and initializing various variables", function(t) {
-  t.plan(1);
-
-  // t.throws(() => compiler.compileFile(`int main() { }`));
-  t.doesNotThrow(() => compiler.compileFile(`int main() { }`));
+  t.doesNotThrow(() => compiler.compileExpr(`1`));
+  t.doesNotThrow(() => compiler.compileExpr(`a`));
+  t.doesNotThrow(() => compiler.compileExpr(`+ a + b`));
+  t.doesNotThrow(() => compiler.compileExpr(`- a - - b`));
+  t.doesNotThrow(() => compiler.compileExpr(`- - - - + + + - - a`));
+  t.doesNotThrow(() => compiler.compileExpr(`1 + 2 + a + b`));
+  t.doesNotThrow(() => compiler.compileExpr(`1 - 2 - a - b`));
+  t.doesNotThrow(() => compiler.compileExpr(`1 * 2 * a * b`));
+  t.doesNotThrow(() => compiler.compileExpr(`1 / 2 / a / b`));
 
   t.end();
+});
 
+test('Basic statements', function(t) {
+  t.plan(6);
+
+  t.doesNotThrow(() => compiler.compileStmt(` 1 + 2 + 3 ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` { 1 + 2 ; 3 + 4 ; } `));
+  t.doesNotThrow(() => compiler.compileStmt(` return 1 ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` while ( 1 + 2 ) { 1 + 2 ; } `));
+  t.doesNotThrow(() => compiler.compileStmt(` for ( int i = 0 ; i < 10 ; i ++ ) { } `));
+  t.doesNotThrow(() => compiler.compileStmt(` ; ; ; `));
+
+  t.end();
+});
+
+test('Basic function declarations', function(t) {
+  t.plan(5);
+
+  t.doesNotThrow(() => compiler.compileFile(` int main ( ) { } `));
+  t.doesNotThrow(() => compiler.compileFile(` int main ( ) { 1 + 2; } `));
+  t.doesNotThrow(() => compiler.compileFile(` int main ( int argc, char * argv ) { 1 + 2; } `));
+  t.doesNotThrow(() => compiler.compileFile(` int main ( int argc, char * argv ) { 1 + 2; 3; ; 4; } `));
+  t.doesNotThrow(() => compiler.compileFile(` int main ( int argc, char * argv ) { 1 + 2; 3; ; 4; return 5; return 6; } `));
+
+  t.end();
+});
+
+test('Variable definitions', function(t) {
+  t.plan(8);
+
+  t.doesNotThrow(() => compiler.compileStmt(` int x ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int x = 1 + 2 / 3 ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int x = y ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int * x = & y ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int * * * x = & y ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int x [ 10 ] ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int x [ 10 * 40 ] ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int x [ 10 ] [ 50 ] ; `));
+
+  t.end();
+});
+
+test('Syntactially complex expressions', function(t) {
+  t.plan(7);
+
+  t.doesNotThrow(() => compiler.compileExpr(`a.next`));
+  t.doesNotThrow(() => compiler.compileExpr(`a[10]`));
+  t.doesNotThrow(() => compiler.compileExpr(`*a`));
+  t.doesNotThrow(() => compiler.compileExpr(`&a`));
+  t.doesNotThrow(() => compiler.compileExpr(`(*a).next`));
+  t.doesNotThrow(() => compiler.compileExpr(`a.next[10]`));
+  t.doesNotThrow(() => compiler.compileExpr(`a.next[10].ptr->val`));
+
+  t.end();
+});
   // t.doesNotThrow(() => parse(tokenize(
   //   `int **x = 4;
   //   int main() {
@@ -68,4 +127,3 @@ test("creating and initializing various variables", function(t) {
   //     int x, y;
   //   }`
   // )), undefined, "function redeclaration should throw an error")
-})

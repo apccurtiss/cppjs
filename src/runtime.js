@@ -36,18 +36,52 @@ function Program(options) {
     }),
   };
 
+  this.initMemory = function(typ) {
+    if(typ instanceof ast.TypBase) {
+      switch(typ.typ) {
+        case 'string':
+          return '';
+        default:
+          return 0;
+      }
+    }
+    if(typ instanceof ast.TypPtr) {
+      return undefined;
+    }
+    else if(typ instanceof ast.TypArr) {
+      var newArr = Array(typ.size.val);
+      for(var i = 0; i < newArr.length; i++) {
+        newArr[i] = this.initMemory(typ.typ);
+      }
+      return newArr;
+    }
+    else if(typ instanceof ast.TypObj) {
+      return Object.keys(typ.fields).reduce(
+        (acc, h) => {
+          acc[h] = this.initMemory(typ.fields[h]);
+          return acc;
+        }, {});
+    }
+    else {
+      throw Error('Unsupported type: ' + typ.constructor.name)
+    }
+  };
+
   this.getMemory = function(loc) {
     if(loc instanceof ast.Var) {
       return this.memory[loc.name];
     }
-    else if (loc instanceof ast.Lit){
-      return this.memory[loc.val];
+    else if (loc instanceof ast.Deref){
+      return this.memory[loc.e1.val];
+    }
+    else if (loc instanceof ast.IndexAccess){
+      return this.getMemory(loc.e1)[this.getVal(loc.index)];
     }
     else if (loc instanceof ast.MemberAccess){
       return this.getMemory(loc.e1)[loc.field];
     }
     else {
-      throw Error('Internal error: Location was not a var, lit, or member access.');
+      throw Error('Internal error: Location was not a var, deref, index, or member access.');
     }
   }
 
@@ -55,31 +89,32 @@ function Program(options) {
     if(loc instanceof ast.Var) {
       this.memory[loc.name] = val;
     }
-    else if (loc instanceof ast.Lit){
-      this.memory[loc.val] = val;
+    else if (loc instanceof ast.Deref){
+      this.memory[loc.e1.val] = val;
+    }
+    else if (loc instanceof ast.IndexAccess){
+      this.getMemory(loc.e1)[this.getVal(loc.index)] = val;
     }
     else if (loc instanceof ast.MemberAccess){
       this.getMemory(loc.e1)[loc.field] = val;
     }
     else {
-      throw Error('Internal error: Location was not a var, lit, or member access.');
+      throw Error('Internal error: Location was not a var, deref, index, or member access.');
     }
   }
 
   this.getVal = function(leaf) {
-    if(leaf instanceof ast.Var) {
+    if(leaf instanceof ast.Var || leaf instanceof ast.Deref) {
       return this.getMemory(leaf);
     }
     else if(leaf instanceof ast.MemberAccess) {
-      // console.log("Memory: ", this.memory)
-      // console.log("e1: ", leaf.e1)
       return this.getMemory(leaf.e1)[leaf.field];
     }
     else if(leaf instanceof ast.Lit) {
       return leaf.val;
     }
     else {
-      throw Error('Internal error: Expression was not variable or value!');
+      throw Error('Internal error: Expression was not variable, index, deref, member access, or value!');
     }
   }
 
@@ -100,10 +135,32 @@ function Program(options) {
   }
 
   this.stepgen = function(current, next) {
-    if(current instanceof ast.Builtin || current instanceof ast.Lit ||
-       current instanceof ast.Var) {
+    if(current instanceof ast.Builtin || current instanceof ast.TypBase ||
+      current instanceof ast.Lit || current instanceof ast.Var
+      || current instanceof ast.Nop) {
       // console.log("On: ", current)
       return next(current);
+    }
+
+    else if(current instanceof ast.TypPtr) {
+      return this.stepgen(current.typ,
+        (vt) => next(new ast.TypPtr(vt)));
+    }
+
+    else if(current instanceof ast.TypArr) {
+      return this.stepgen(current.typ,
+        (vt) => this.stepgen(current.size,
+          (vs) => next(new ast.TypArr(vt, vs))));
+    }
+
+    else if(current instanceof ast.TypObj) {
+      var fields = Object.keys(current.fields).reduce((acc, h) => {
+        return this.stepgen(current.fields[h], (hv) => {
+          acc[h] = hv;
+          return acc;
+        });
+      }, {});
+      return next(new ast.TypObj(current.name, fields));
     }
 
     else if(current instanceof ast.Scope) {
@@ -121,8 +178,6 @@ function Program(options) {
             return next(new ast.Lit('int', -this.getVal(v1)));
           case '+':
             return next(v1);
-          case '*':
-            return next(new ast.Lit('ptr', this.getMemory(v1)));
           default:
             throw Error('Unimplemented uop: ' + current.op);
         }
@@ -141,12 +196,20 @@ function Program(options) {
               return next(new ast.Lit('int', this.getVal(v1) + this.getVal(v2)));
             case '-':
               return next(new ast.Lit('int', this.getVal(v1) - this.getVal(v2)));
-            case '<<':
-              return next(new ast.Lit('int', this.getVal(v1) << this.getVal(v2)));
+            case '*':
+              return next(new ast.Lit('int', this.getVal(v1) * this.getVal(v2)));
+            case '/':
+              return next(new ast.Lit('int', this.getVal(v1) / this.getVal(v2)));
             case '!=':
               return next(new ast.Lit('bool', this.getVal(v1) != this.getVal(v2)));
             case '<':
-              return next(new ast.Lit('bool', this.getVal(v1) != this.getVal(v2)));
+              return next(new ast.Lit('bool', this.getVal(v1) < this.getVal(v2)));
+            case '>':
+              return next(new ast.Lit('bool', this.getVal(v1) > this.getVal(v2)));
+            case '<=':
+              return next(new ast.Lit('bool', this.getVal(v1) <= this.getVal(v2)));
+            case '>=':
+              return next(new ast.Lit('bool', this.getVal(v1) >= this.getVal(v2)));
             default:
               throw Error('Unimplemented bop: ' + current.op);
           }
@@ -157,6 +220,20 @@ function Program(options) {
     else if(current instanceof ast.MemberAccess) {
       return this.stepgen(current.e1, (v1) => {
         return next(new ast.MemberAccess(v1, current.field));
+      });
+    }
+
+    else if(current instanceof ast.IndexAccess) {
+      return this.stepgen(current.e1, (v1) => {
+        return this.stepgen(current.index, (v2) => {
+          return next(new ast.IndexAccess(v1, v2));
+        });
+      });
+    }
+
+    else if(current instanceof ast.Deref) {
+      return this.stepgen(current.e1, (v1) => {
+        return next(new ast.Deref(new ast.Lit('ptr', this.getVal(v1))));
       });
     }
 
@@ -172,6 +249,11 @@ function Program(options) {
         else {
           console.assert(current.args.length == 0);
           this.onFnCall(v1.name, v1.frame);
+          for(var v in v1.frame) {
+            this.setMemory(new ast.Var(v), this.initMemory(v1.frame[v]));
+          }
+          // console.log("MEMORY:")
+          // console.log(this.memory);
           return (_) => this.stepgen(v1.body, (r) => {
             this.onFnEnd(v1.name, r);
             next(r);
@@ -181,10 +263,7 @@ function Program(options) {
     }
 
     else if(current instanceof ast.Steppoint) {
-      // console.log("On: ", current)
-      // this.position = current.position;
       return (_) => {
-        // console.log("Inside: ", current)
         this.position = current.position;
         return this.stepgen(current.body, next);
       };
@@ -204,24 +283,6 @@ function Program(options) {
     throw Error('Unimplemented type: ' + '"' + current.constructor.name) + '"';
   }
 
-  // console.log(this.memory['main'].body.body)
-  // stepper = this.stepgen(this.memory['main'].body, (_) => {
-  // var tmp_ast = new ast.Steppoint({end:1}, new ast.Steppoint({end:2}, new ast.Lit(2, 2)));
-  // var tmp_ast = new ast.Scope([
-  //   new ast.Steppoint({start: 1, end: 2}, new ast.Lit(1, 1)),
-  //   new ast.Steppoint({start: 3, end: 4}, new ast.Lit(2, 2)),
-  // ]);
-  // var tmp_ast = new ast.Scope([
-  //   new ast.Lit(1, 1),
-  //   new ast.Lit(2, 2),
-  // ]);
-  // console.log(tmp_ast)
-  // var stepper = this.stepgen(tmp_ast, (n) => {
-  //   this.position = undefined;
-  //   this.done = true;
-  //   return n;
-  // });
-  // console.log(stepper)
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
     this.position = undefined;
     return null;
@@ -234,7 +295,7 @@ function Program(options) {
     return stepper;
   }
 
-  this.run = function() {
+  this.run = () => {
     while(this.step());
   };
 }

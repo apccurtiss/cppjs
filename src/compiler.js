@@ -1,77 +1,58 @@
 var ast = require('./ast');
 var parser = require('./parser');
+var pp = require('./preprocesser');
 
 function cmpl(node) {
-  if(node instanceof ast.BasicTyp || node instanceof ast.Ptr || node instanceof ast.Arr ||
-     node instanceof ast.ObjTyp || node instanceof ast.Lit || node instanceof ast.Var ||
-     node instanceof ast.Ident || node instanceof ast.ObjTmpl) {
-    return node;
-  }
-  else if(node instanceof ast.Decl) {
+  if(node instanceof ast.Decl) {
     if(node.val) {
-      return new ast.Bop('=', new ast.Var(node.name), cmpl(node.val));
+      return new ast.Bop('=', new ast.Var(node.name), node.val.apply(cmpl));
     }
+    return new ast.Nop();
   }
   else if(node instanceof ast.Uop) {
-    if(node.op == 'new') {
-      return new ast.Call(new ast.Var('!malloc'), [node.e1]);
+    switch(node.op) {
+      case 'new':
+        return new ast.Call(new ast.Var('!malloc'), [node.e1]);
+      case '*':
+        return new ast.Deref(node.e1.apply(cmpl));
+      // TODO(alex): Avoid side effect duplication.
+      case '++':
+        return new ast.Bop('=', node.e1.apply(cmpl),
+          new ast.Bop('+', node.e1.apply(cmpl), new ast.Lit(new ast.TypBase('int'), 1)));
+      case '--':
+        return new ast.Bop('=', node.e1.apply(cmpl),
+          new ast.Bop('-', node.e1.apply(cmpl), new ast.Lit(new ast.TypBase('int'), 1)));
+      default:
+        return new ast.Uop(node.op, node.e1.apply(cmpl));
     }
-    return new ast.Uop(node.op, cmpl(node.e1));
   }
   else if(node instanceof ast.Bop) {
     switch(node.op) {
-      // case '=':
-      //   return new ast.Assign(cmpl(node.e1), cmpl(node.e2));
-      case '.':
-        return new ast.MemberAccess(cmpl(node.e1), node.e2.name);
-      case '->':
-        return new ast.MemberAccess(new ast.Uop('*', cmpl(node.e1)), node.e2.name);
       case '<<':
         if(node.e1.name == 'cout') {
-          return new ast.Call(new ast.Var('!print'), [cmpl(node.e2)]);
+          return new ast.Call(new ast.Var('!print'), [node.e2.apply(cmpl)]);
         }
       default:
-        return new ast.Bop(node.op, cmpl(node.e1), cmpl(node.e2));
+        return new ast.Bop(node.op, node.e1.apply(cmpl), node.e2.apply(cmpl));
     }
   }
-  else if(node instanceof ast.Top) {
-    return new ast.Top(node.op, cmpl(node.e1), cmpl(node.e2), cmpl(node.e3));
-  }
-  else if(node instanceof ast.Fn) {
-    frame = {};
-    var frameWalker = new ast.Walker((node) => {
-      if(node instanceof ast.Decl) {
-        frame[node.name] = node.typ;
-      }
-    });
-    frameWalker.walk(node.body);
-    return new ast.Fn(node.ret, node.name, node.params, cmpl(node.body), frame);
-  }
-  else if(node instanceof ast.Call) {
-    return new ast.Call(cmpl(node.fn), node.args.map(cmpl));
-  }
-  else if(node instanceof ast.Loop) {
-    return new ast.Loop(cmpl(node.cond), cmpl(node.body));
-  }
-  else if(node instanceof ast.If) {
-    return new ast.If(cmpl(node.cond), cmpl(node.body));
-  }
-  else if(node instanceof ast.Scope) {
-    return new ast.Scope(node.stmts.map(cmpl));
-  }
-  else if(node instanceof ast.File) {
-    return new ast.File(node.decls.map(cmpl));
-  }
-  else if(node instanceof ast.Steppoint) {
-    return new ast.Steppoint(node.position, cmpl(node.body));
-  }
   else {
-    throw Error('Unimplemented type: ' + node.constructor.name);
+    return node;
   }
 }
 
 module.exports = {
-  compileFile: (code) => cmpl(parser.parseFile(code)),
-  compileStmt: (code) => cmpl(parser.parseStmt(code)),
-  compileExpr: (code) => cmpl(parser.parseExpr(code)),
+  compileFile: (code) => {
+    var parsed = parser.parseFile(code);
+    // console.log('parsed: ');
+    // console.log(parsed.decls[1].body.stmts[0]);
+    var ppd = pp.preprocess(parsed);
+    // console.log('ppd: ');
+    // console.log(ppd.decls[1].body.stmts[0]);
+    // console.log('ppd.apply(cmpl): ');
+    // console.log(ppd.apply(cmpl).decls[1].body.stmts[0]);
+    return ppd.apply(cmpl);
+  },
+  compileStmt: (code) => pp.preprocess(parser.parseStmt(code)).apply(cmpl),
+  compileExpr: (code) => pp.preprocess(parser.parseExpr(code)).apply(cmpl),
 };

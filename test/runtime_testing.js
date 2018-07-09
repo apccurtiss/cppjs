@@ -1,6 +1,113 @@
 var runtime = require('../src/runtime.js');
 var test = require('tape');
 
+test('Get basic function output.', function(t) {
+  t.plan(5);
+
+  var output = '';
+  var program = new runtime.Program({
+    onPrint: (text) => { output += text; },
+    code: `int main ( ) { cout << 1; cout << 1 + 2; cout << 1 + 2 + 3; }`
+  });
+
+  program.step();
+  t.equal(output, '1');
+  program.step();
+  t.equal(output, '13');
+  program.step();
+  t.equal(output, '136');
+  program.step();
+  t.equal(output, '136');
+  program.step();
+  t.equal(output, '136');
+
+  t.end();
+});
+
+test('Array of structs.', function(t) {
+  t.plan(7);
+
+  var output = '';
+  var program = new runtime.Program({
+    onPrint: (text) => { output += text; },
+    code: `
+    struct Foo {
+      int bar ;
+    } ;
+
+    int main ( ) {
+      Foo foos [ 10 ] ;
+      for ( int i = 0 ; i < 10 ; i ++ ) {
+        foos [ i ] . bar = i ;
+      }
+
+      for ( int i = 9 ; i >= 0 ; i -- ) {
+        cout << foos [ i ] . bar ;
+      }
+    }`
+  });
+
+  t.doesNotThrow(program.step); // Foo foos [ 10 ] ;
+  t.doesNotThrow(program.step); // int i = 0
+  t.doesNotThrow(program.step); // i < 10
+  t.doesNotThrow(program.step); // foos [ i ] . bar = i ;
+  t.doesNotThrow(program.step); // i ++
+  t.doesNotThrow(program.run);
+  t.equal(output, '9876543210');
+
+  t.end();
+
+});
+
+test('Basic dynamic memory.', function(t) {
+  t.plan(2);
+
+  var output = '';
+  var dynamicAllocations = 0;
+  var program = new runtime.Program({
+    onPrint: (text) => { output += text; },
+    onDynamicAllocation: (_) => { dynamicAllocations += 1; },
+    code: `int main ( ) { int *y = new int; *y = 7; cout << *y; }`
+  });
+
+  program.run();
+  t.equal(dynamicAllocations, 1);
+  t.equal(output, '7');
+});
+
+test('Basic linked list.', function(t) {
+  t.plan(2);
+
+  var output = '';
+  var dynamicAllocations = 0;
+  var program = new runtime.Program({
+    onPrint: (text) => { output += text; },
+    onDynamicAllocation: (_) => { dynamicAllocations += 1; },
+    code: `
+    struct Node {
+      int key;
+      Node *next;
+    };
+
+    int main ( ) {
+      Node *head;
+      head = new Node;
+      head->key = 1;
+      head->next = new Node;
+      head->next->key = 2;
+      head->next->next = 0;
+
+      while(head != 0) {
+        cout << head->key;
+        head = head->next;
+      }
+    }`
+  });
+
+  program.run();
+  t.equal(output, '12');
+  t.equal(dynamicAllocations, 2);
+});
 // test('setting and loading values from memory', function(t) {
 //   t.plan(5);
 //

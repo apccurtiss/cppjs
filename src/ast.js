@@ -1,232 +1,198 @@
-// function Typ(typ, ptrs) {
-//   this.typ = typ;
-//   this.ptrs = ptrs;
-//   this.toString = () => {
-//     return typ + Array(ptrs+1).join('*');
-//   }
-// }
-
-// Types
-function BasicTyp(typ) {
-  this.typ = typ;
-  this.toString = () => typ;
-}
-
-function Ptr(typ) {
-  this.typ = typ;
-  this.toString = () => typ.toString() + '*';
-}
-
-function Arr(typ, size) {
-  this.typ = typ;
-  this.size = size;
-  this.toString = () => typ.toString() + (size == undefined) ? '[]' : '[' + size + ']';
-}
-
-function ObjTyp(name, fields) {
-  this.name = name;
-  this.fields = fields;
-  this.toString = () => {
-    if(name != undefined) {
-      return name;
-    }
-    let ret = '{ ';
-    for(field in fields) {
-      ret += fields[field].toString + ' ' + field + '; ';
-    }
-    return ret + ' }';
-  };
-}
-
-// Basic AST elements
-
-function Lit(typ, val) {
-  this.typ = typ;
-  this.val = val;
-}
-
-// function Ptr(typ, addr) {
-//   this.typ = typ;
-//   this.addr = addr;
-// }
-
-function Ident(name) {
-  this.name = name;
-}
-
-function Var(name) {
-  this.name = name;
-}
-
-function Decl(typ, name, val) {
-  this.typ = typ;
-  this.name = name;
-  this.val = val;
-}
-
-function Uop(op, e1) {
-  this.op = op;
-  this.e1 = e1;
-}
-
-function Bop(op, e1, e2) {
-  this.op = op;
-  this.e1 = e1;
-  this.e2 = e2;
-}
-
-function Top(op, e1, e2) {
-  this.op = op;
-  this.e1 = e1;
-  this.e2 = e2;
-  this.e3 = e3;
-}
-
-function MemberAccess(e1, field) {
-  this.e1 = e1;
-  this.field = field;
-}
-
-function Assign(e1, e2) {
-  this.e1 = e1;
-  this.e2 = e2;
-}
-
-function Fn(ret, name, params, body, frame) {
-  this.ret = ret;
-  this.name = name;
-  this.params = params;
-  this.body = body;
-  this.frame = frame;
-}
-
-function ObjTmpl(name, publ, priv) {
-  this.name = name;
-  this.publ = publ;
-  this.priv = priv;
-}
-
-function Call(fn, args) {
-  this.fn = fn;
-  this.args = args;
-}
-
-function Loop(cond, body) {
-  this.cond = cond;
-  this.body = body;
-}
-
-function If(cond, body) {
-  this.cond = cond;
-  this.body = body;
-}
-
-function Scope(stmts) {
-  this.stmts = stmts;
-}
-
-function File(decls) {
-  this.decls = decls;
-}
-
-// Compiler created
-
-function Steppoint(position, body) {
-  this.position = position;
-  this.body = body;
-}
-
-function Builtin(f) {
-  this.f = f;
-}
-
-function Frame(fn, offsets, size) {
-  this.f = f;
-}
-
-// Runtime objects
-
-function Obj(typ, publ, priv) {
-  this.typ = typ;
-  this.publ = publ;
-  this.priv = priv;
-}
-
-function Walker(fn) {
-  function walk(node) {
-    fn(node);
-    if(node instanceof BasicTyp || node instanceof Ptr || node instanceof Arr ||
-       node instanceof ObjTyp || node instanceof Lit || node instanceof Var ||
-       node instanceof Ident || node instanceof ObjTmpl) {
-      return node;
-    }
-    else if(node instanceof Decl) {
-      return new Decl(node.name, walk(node.val));
-    }
-    else if(node instanceof Uop) {
-      return new Uop(node.op, walk(node.e1));
-    }
-    else if(node instanceof Bop) {
-      return new Bop(node.op, walk(node.e1), walk(node.e2));
-    }
-    else if(node instanceof Top) {
-      return new Top(node.op, walk(node.e1), walk(node.e2), walk(node.e3));
-    }
-    else if(node instanceof Fn) {
-      return new Fn(node.ret, node.name, node.params, walk(node.body), node.frame);
-    }
-    else if(node instanceof Call) {
-      return new Call(walk(node.fn), node.args.map(walk));
-    }
-    else if(node instanceof Loop) {
-      return new Loop(walk(node.cond), walk(node.body));
-    }
-    else if(node instanceof If) {
-      return new If(walk(node.cond), walk(node.body));
-    }
-    else if(node instanceof Scope) {
-      return new Scope(node.stmts.map(walk));
-    }
-    else if(node instanceof File) {
-      return new File(node.decls.map(walk));
-    }
-    else if(node instanceof Steppoint) {
-      return new Steppoint(node.position, walk(node.body));
-    }
-    else {
-      throw Error('Unimplemented type: ' + node.constructor.name);
-    }
-  }
-
-  this.walk = walk;
-}
-
 module.exports = {
-  // Typ: Typ,
-  BasicTyp: BasicTyp,
-  Ptr: Ptr,
-  Arr: Arr,
-  ObjTyp: ObjTyp,
-  Lit: Lit,
-  // Ptr: Ptr,
-  Ident: Ident,
-  Var: Var,
-  Decl: Decl,
-  Uop: Uop,
-  Bop: Bop,
-  Top: Top,
-  MemberAccess: MemberAccess,
-  Assign: Assign,
-  Fn: Fn,
-  ObjTmpl: ObjTmpl,
-  Call: Call,
-  Loop: Loop,
-  If: If,
-  Scope: Scope,
-  File: File,
-  Steppoint: Steppoint,
-  Builtin: Builtin,
-  Frame: Frame,
-  Obj: Obj,
-  Walker: Walker,
+  // Types
+  TypName: function(typ) {
+    this.typ = typ;
+    this.toString = () => typ;
+
+    this.apply = (f) => f(this);
+  },
+
+  TypBase: function(typ) {
+    this.typ = typ;
+    this.toString = () => typ;
+
+    this.apply = (f) => f(this);
+  },
+
+  TypPtr: function(typ) {
+    this.typ = typ;
+    this.toString = () => typ.toString() + '*';
+
+    this.apply = (f) => f(new module.exports.TypPtr(this.typ.apply(f)));
+  },
+
+  TypArr: function(typ, size) {
+    this.typ = typ;
+    this.size = size;
+    this.toString = () => typ.toString() + (size == undefined) ? '[]' : '[' + size + ']';
+
+    this.apply = (f) => f(new module.exports.TypArr(this.typ.apply(f), size));
+  },
+
+  TypObj: function(name, fields) {
+    this.name = name;
+    this.fields = fields;
+    this.toString = () => {
+      if(name != undefined) {
+        return name;
+      }
+      let ret = '{ ';
+      for(field in fields) {
+        ret += fields[field].toString + ' ' + field + '; ';
+      }
+      return ret + ' }';
+    };
+
+    this.apply = (f) => {
+      fields = {};
+      for(field in this.fields) {
+        fields[field] = this.fields[field].apply(f);
+      }
+      return f(new module.exports.TypObj(this.name, fields));
+    };
+  },
+
+  // AST nodes
+
+  Lit: function(typ, val) {
+    this.typ = typ;
+    this.val = val;
+
+    this.apply = (f) => f(this);
+  },
+
+  Var: function(name) {
+    this.name = name;
+
+    this.apply = (f) => f(this);
+  },
+
+  Decl: function(typ, name, val) {
+    this.typ = typ;
+    this.name = name;
+    this.val = val;
+
+    this.apply = (f) => f(new module.exports.Decl(this.typ.apply(f), this.name, this.val ? this.val.apply(f) : this.val));
+  },
+
+  Uop: function(op, e1) {
+    this.op = op;
+    this.e1 = e1;
+
+    this.apply = (f) => f(new module.exports.Uop(this.op, this.e1.apply(f)));
+  },
+
+  Bop: function(op, e1, e2) {
+    this.op = op;
+    this.e1 = e1;
+    this.e2 = e2;
+
+    this.apply = (f) => f(new module.exports.Bop(this.op, this.e1.apply(f), this.e2.apply(f)));
+  },
+
+  Ternary: function(cond, e1, e2) {
+    this.cond = cond;
+    this.e1 = e1;
+    this.e2 = e2;
+
+    this.apply = (f) => f(new module.exports.Ternary(this.cond.apply(f), this.e1.apply(f), this.e2.apply(f)));
+  },
+
+  Nop: function() {
+    this.apply = (f) => f(this);
+  },
+
+  MemberAccess: function(e1, field) {
+    this.e1 = e1;
+    this.field = field;
+
+    this.apply = (f) => f(new module.exports.MemberAccess(this.e1.apply(f), this.field));
+  },
+
+  IndexAccess: function(e1, index) {
+    this.e1 = e1;
+    this.index = index;
+
+    this.apply = (f) => f(new module.exports.IndexAccess(this.e1.apply(f), this.index));
+  },
+
+  Deref: function(e1) {
+    this.e1 = e1;
+
+    this.apply = (f) => f(new module.exports.Deref(this.e1.apply(f)));
+  },
+
+  Fn: function(ret, name, params, body, frame) {
+    this.ret = ret;
+    this.name = name;
+    this.params = params;
+    this.body = body;
+    this.frame = frame;
+
+    this.apply = (f) => f(new module.exports.Fn(this.ret, this.name, this.params.map((x) => x.apply(f)), this.body.apply(f), this.frame));
+  },
+
+  ObjTmpl: function(name, publ, priv) {
+    this.name = name;
+    this.publ = publ;
+    this.priv = priv;
+
+    this.apply = (f) => f(this);
+  },
+
+  Call: function(fn, args) {
+    this.fn = fn;
+    this.args = args;
+
+    this.apply = (f) => f(new module.exports.Call(f(fn), this.args.map((x) => x.apply(f))));
+  },
+
+  Return: function(e1) {
+    this.e1 = e1;
+
+    this.apply = (f) => f(new module.exports.Return(this.e1.apply(f)));
+  },
+
+  Loop: function(cond, body) {
+    this.cond = cond;
+    this.body = body;
+
+    this.apply = (f) => f(new module.exports.Loop(this.cond.apply(f), this.body.apply(f)));
+  },
+
+  If: function(cond, body) {
+    this.cond = cond;
+    this.body = body;
+
+    this.apply = (f) => f(new module.exports.If(this.cond.apply(f), this.body.apply(f)));
+  },
+
+  Scope: function(stmts) {
+    this.stmts = stmts;
+
+    this.apply = (f) => f(new module.exports.Scope(this.stmts.map((x) => x.apply(f))));
+  },
+
+  CFile: function(decls) {
+    this.decls = decls;
+
+
+    this.apply = (f) => {
+      return f(new module.exports.CFile(this.decls.map((x) => x.apply(f))))};
+  },
+
+  // Compiler created
+
+  Steppoint: function(position, body) {
+    this.position = position;
+    this.body = body;
+
+    this.apply = (f) => f(new module.exports.Steppoint(this.position, this.body.apply(f)));
+  },
+
+  Builtin: function(f) {
+    this.f = f;
+
+    this.apply = (f) => f(this);
+  },
 }

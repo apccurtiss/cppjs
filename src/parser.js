@@ -39,7 +39,7 @@ var ident = ws(parse.bind(parse.cons(
 var typ = bind_list(
   ident,
   parse.eager(parse.many(ws(text.character('*')))),
-  (typ, ptrs) => ptrs.reduce((acc, _) => new ast.Ptr(acc), new ast.BasicTyp(typ)));
+  (typ, ptrs) => ptrs.reduce((acc, _) => new ast.TypPtr(acc), new ast.TypName(typ)));
 
 var var_name = ident;
 
@@ -49,18 +49,8 @@ var number = parse.bind(
     (d, acc) => d + acc,
     ds)))));
 
-// parse.late used to revolve cyclical reference
-var atom = parse.late(() => ws(parse.expected(
-  'Expected atom',
-  parse.choice(
-    number,
-    parse.bind(ident, (n) => parse.always(new ast.Var(n))),
-    lang.between(text.character('('),
-                 text.character(')'),
-                 expr)))));
-
 var prefxs = (ops, next) => parse.bind(
-  parse.many(ops),
+  parse.many(ws(ops)),
   (ops) => parse.bind(
     next,
     (e) => parse.always(nu.foldr(
@@ -69,10 +59,10 @@ var prefxs = (ops, next) => parse.bind(
       ops
   ))));
 
-var sufxs = (ops, next) => parse.bind(
+var postfxs = (ops, next) => parse.bind(
   next,
   (e) => parse.bind(
-    parse.many(ops),
+    parse.many(ws(ops)),
     (ops) => parse.always(nu.foldl(
       (acc, op) => new ast.Uop(op, acc),
       e,
@@ -91,14 +81,66 @@ var bopsr = (ops, next) => lang.chainr1(
     (op) => parse.always((e1, e2) => new ast.Bop(op, e1, e2))),
   next);
 
+var ternary = (next) => lang.chainr1(
+  bind_list(
+    lang.between(
+      ws(text.character('?')),
+      ws(text.character(':')),
+      next
+    ),
+    (e1) => parse.always((cond, e2) => new ast.Ternary(cond, e2, e3))),
+  next);
+
 // https://msdn.microsoft.com/en-us/library/126fe14k.aspx
-var group1 = bopsl(text.string('::'), atom);
-var group2 = group1; // TODO(alex): Postfixes
+var expr = parse.late(() => group18);
+var group0 = ws(parse.choice(
+    number,
+    parse.bind(ident, (n) => parse.always(new ast.Var(n))),
+    lang.between(text.character('('),
+                 text.character(')'),
+                 expr)));
+var group1 = bopsl(text.string('::'), group0);
+var group2 = parse.late(() => parse.choice(
+    // TODO(alex): Casting
+    // TODO(alex): typeid
+    // Because this group's postfix operators parse in very different ways, each
+    // parser returns a function that creates the AST node, allowing them to be
+    // called in sequence, with the result of each one being passed to the next.
+    bind_list(
+      group1,
+      parse.many(ws(parse.choice(
+        parse.bind(text.trie(['++', '--']), (op) => parse.always((e) =>
+          new ast.Uop(op, e))),
+        bind_list(
+          text.trie(['.', '->']),
+          ws(ident),
+          (op, field) => (e) =>
+            new ast.MemberAccess(op == '.' ? e : new ast.Uop('*', e), field)),
+        parse.bind(lang.between(
+          ws(text.character('[')),
+          ws(text.character(']')),
+          expr),
+          (index) => parse.always((e) =>
+            new ast.IndexAccess(e, index))),
+        parse.bind(lang.between(
+          ws(text.character('(')),
+          ws(text.character(')')),
+          // Group17 used here because commas are a valid operator in group18.
+          parse.eager(lang.sepBy(ws(text.character(',')), group17))),
+          (args) => parse.always((e) =>
+            new ast.Call(e, args)))
+      ))),
+      (e, opfns) => {
+        return nu.foldl(
+        (acc, opfn) => opfn(acc),
+        e,
+        opfns
+      )
+    })));
 // TODO(alex): Add casting
 var group3 = prefxs(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&',
     '*', 'new', 'delete']), group2);
-// var group3 = group2;
-var group4 = bopsl(text.trie(['.', '->']), group3);
+var group4 = bopsl(text.trie(['.*', '->*']), group3);
 var group5 = bopsl(text.oneOf('*/%'), group4);
 var group6 = bopsl(text.oneOf('+-'), group5);
 var group7 = bopsl(text.trie(['<<', '>>']), group6);
@@ -109,16 +151,23 @@ var group11 = bopsl(text.character('^'), group10);
 var group12 = bopsl(text.character('|'), group11);
 var group13 = bopsl(text.string('&&'), group12);
 var group14 = bopsl(text.string('||'), group13);
-var group15 = group14; // TODO(alex) conditional
+var group15 = ternary(group14);
 var group16 = bopsr(text.trie(['=', '*=', '/=', '+=', '-=']), group15);
 var group17 = group16; // TODO(alex) throw
 var group18 = bopsl(text.character(','), group17);
-var expr = ws(group18);
 
 var var_decl = bind_list(
   typ,
   ws(var_name),
-  (typ, name) => new ast.Decl(typ, name));
+  parse.many(lang.between(
+    ws(text.character('[')),
+    ws(text.character(']')),
+    expr)),
+  (typ, name, arrs) => new ast.Decl(
+    nu.foldl(
+      (acc, h) => new ast.TypArr(acc, h),
+      typ,
+      arrs), name));
 
 var var_def = bind_list(
   var_decl,
@@ -138,7 +187,7 @@ var while_loop = parse.late(() =>
     ws(lang.between(
       text.character('('),
       text.character(')'),
-      step_point(expr))),
+      ws(step_point(expr)))),
     ws(stmt),
     (_, cond, body) => {
       return new ast.Loop(cond, body)
@@ -177,8 +226,14 @@ var stmt = ws(parse.choice(
   while_loop,
   for_loop,
   scope,
+  step_point(parse.bind(lang.between(
+    text.string('return'),
+    semi,
+    ws(expr)),
+    (e) => parse.always(new ast.Return(e)))),
   step_point(parse.attempt(lang.then(var_def, semi))),
-  step_point(lang.then(expr, semi))));
+  step_point(lang.then(expr, semi)),
+  step_point(parse.next(semi, parse.always(new ast.Nop())))));
 
 var stmts = parse.eager(parse.many(ws(stmt)));
 
@@ -221,7 +276,7 @@ var file = parse.bind(lang.then(
         lang.then(obj_tmpl, ws(semi)),
         fn_def)))),
     parse.eof),
-    (body) => parse.always(new ast.File(body)));
+    (body) => parse.always(new ast.CFile(body)));
 
 var parseFile = (s) => parse.run(file, s)
 var parseFn = (s) => parse.run(fn_def, s)
