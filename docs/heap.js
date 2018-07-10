@@ -17,19 +17,21 @@ function MemDrawing(canvas) {
       return '#ddd';
     }
     else if(node instanceof ast.TypPtr) {
-      return '#f66';
+      return '#948';
     }
     else if(node instanceof ast.TypObj) {
-      return '#aaf';
+      return '#359';
     }
   }
 
   function generateBaseNode(typ, x, y, size) {
-    var text = draw.text('Unset').move(size/2, 0).font({anchor: 'middle', family: 'monospace'});
+    var newNode = draw.circle(size).attr({ fill: getColor(typ) });
+    var text = draw.text('Unset').font({anchor: 'middle', family: 'monospace'}).fill('#fff');
+    var text_offset = verticalCenterOffset(text, newNode);
     return {
       typ: typ,
-      svg: draw.group().add(draw.circle(size).attr({ fill: getColor(typ) }))
-        .add(text)
+      svg: draw.group().add(newNode)
+        .add(text.move(size/2, text_offset))
         .remember('text', text)
         .move(x, y),
     }
@@ -59,16 +61,21 @@ function MemDrawing(canvas) {
     }
   }
 
+  function verticalCenterOffset(text, container) {
+    return (container.bbox().height / 2) - (text.bbox().height / 2);
+  }
+
   function generateObj(typ, x, y) {
     var borderWidth = 10,
         ret = draw.group(),
         w = 0, h = borderWidth,
         children = {};
     for(field in typ.fields) {
-      var text = draw.text(field + ': ').font({anchor: 'left', family: 'sans'});
+      var text = draw.text(field + ': ').font({anchor: 'left', family: 'sans'}).fill('#fff');
       var newNode = generateNode(typ.fields[field], text.bbox().width + borderWidth, 0);
+      var text_offset = verticalCenterOffset(text, newNode.svg);
       var newField = draw.group()
-        .add(text)
+        .add(text.move(0, text_offset))
         .add(newNode.svg)
         .move(borderWidth, h);
       var bbox = newField.bbox();
@@ -203,7 +210,7 @@ function MemDrawing(canvas) {
     disconnect(source);
     var s = getGlobalPosition(svgLookup(source));
     var t = getGlobalPosition(svgLookup(target));
-    var line = draw.line(s.x, s.y, t.x, t.y).stroke({ width: 10 }).attr({ fill: '#000' });
+    var line = draw.line(s.x, s.y, t.x, t.y).stroke({ color: '#fff', width: 5 });
     edgeSVG.add(line);
     edges.push({
       source: source,

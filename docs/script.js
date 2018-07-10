@@ -6,8 +6,7 @@ var editor = ace.edit('editor');
 var Range = ace.require('ace/range').Range;
 editor.getSession().setMode('ace/mode/c_cpp');
 editor.setShowPrintMargin(false);
-// editor.setTheme('ace/theme/monokai');
-// var canvas = new CanvasState(document.getElementById('canvas'));
+editor.setTheme('ace/theme/tomorrow_night_blue');
 
 /*
  *  Graphical heap init
@@ -23,15 +22,12 @@ var runtime = require('runtime');
 var currentFrame = undefined;
 
 function onAssign(v, val) {
-  console.log(v)
   if(v instanceof runtime.ast.Var) {
     currentFrame.vars[v.name].find('.function-var-value')[0].innerHTML = val;
   }
   else {
-    console.log('Updating node with: ', v);
     heap.updateNode(v, val);
   }
-  console.log(v, 'was assigned to:', val);
 }
 
 function onFnCall(name, frame) {
@@ -91,8 +87,8 @@ $('#compile').click(function(){
   $('#step').css('display', editing ? 'none' : '');
   $('#reset').css('display', editing ? 'none' : '');
   // Adjust windows
-  $('#editor').css('height', editing ? '90%' : '62.5%');
-  $('#editor').css('width', !editing ? 'calc(50% - 10px)' : 'calc(100% - 10px)');
+  // $('#editor').css('height', editing ? '90%' : '62.5%');
+  // $('#editor').css('width', !editing ? 'calc(50% - 10px)' : 'calc(100% - 10px)');
   $('#stdout').css('display', editing ? 'none' : '');
   $('#output').css('display', editing ? 'none' : '');
   $('#canvas').css('display', !editing ? '' : 'none');
@@ -125,13 +121,12 @@ function addBreakpoint() {
     new Range(startRow, startCol, endRow, endCol), 'ace_active-line', 'word');
 }
 
-$('#step').click(step);
-
+var interval = 500;
 var running = false;
-var interval = 250;
-$('#run').click(function(){
+function run() {
   running = !running;
-  $('#run').html(running ? 'Stop' : 'Run');
+  console.log(this);
+  $('#run').html(running ? 'Pause' : 'Run');
   if(running) {
     (function stepInterval() {
       if(running) {
@@ -141,6 +136,15 @@ $('#run').click(function(){
       }
     })();
   }
-});
+}
 
-$('#compile').click();
+function updateAnimationSpeed(value) {
+  interval = (10000 - (value * value)) / 10;
+}
+
+function init() {
+  updateAnimationSpeed($('#animationSpeed').val());
+  $('#compile').click();
+}
+
+init();

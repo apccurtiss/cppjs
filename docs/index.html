@@ -7,55 +7,59 @@
     <!-- <link href="http://visjs.org/dist/vis.css" rel="stylesheet" type="text/css" /> -->
   </head>
   <body>
-    <button type="button" class="button" id="compile">Compile</button>
-    <button type="button" class="button" id="run" style="display: none;">Run</button>
-    <button type="button" class="button" id="step" style="display: none;">Step</button>
-    <button type="button" class="button" id="reset" style="display: none;">Reset</button>
-    <!-- <button type="button" class="button" id="hide" style="display: none;">Hide Data Structure</button> -->
-    <div id="disclaimer"><span id="cjs">C-learn.js: </span><span id="alpha">ALPHA </span><span id="joke">( Version 0.0.Broken )</span></div>
-<div id="editor">struct Node {
+    <div id="main" class="box vertical">
+      <header class="header box horizontal">
+        <div id="disclaimer" class="menu-item"><b>C-learn.js BETA </b><br/><span id="version">( Version 0.0.1 )</span></div>
+        <button type="button" class="menu-item" id="compile">Compile</button>
+        <button type="button" class="menu-item" id="run" onclick="run()" style="display: none;">Run</button>
+        <button type="button" class="menu-item" id="step" onclick="step()" style="display: none;">Step</button>
+        <button type="button" class="menu-item" id="reset" onclick="reset()" style="display: none;">Reset</button>
+        <table class="menu-item">
+          <tr><td>Program speed</td></tr>
+          <tr><td><input type="range" min="1" max="100" value="50" class="slider" id="animationSpeed" oninput="updateAnimationSpeed(this.value)"></input></td></tr>
+        </table>
+      </header>
+      <section id="content">
+        <div id="program" class="box vertical">
+          <div id="editor" class="content">struct Node {
   int key;
   Node *next;
-  Node *prev;
 };
 
-int main(){
-  Node *a = new Node;
-  a->key = 0;
-  a->next = 0;
-  a->prev = 0;
+int main ( ) {
+  Node *head;
+  head = new Node;
+  head->key = 1;
+  head->next = new Node;
+  head->next->key = 2;
+  head->next->next = 0;
 
-  for(int i = i; i < 10; i++) {
-    a->next = new Node;
-    a->next->prev = a;
-    a->next->next = 0;
-    a->next->key = i;
-    a = a->next;
-  }
-
-  while(a != 0) {
-    cout << a->key;
-    a = a->prev;
+  while(head != 0) {
+    cout << head->key;
+    head = head->next;
   }
 }</div>
-    <div id="stdout" style="display: none;">
-      user@c-learn:~$ ./program<br/>
-    </div>
-    <div id="memory">
-      <div id="heap"></div>
-      <!-- <canvas id="canvas" width='300px' height='300px'></canvas> -->
-      <div id="stack">
-        <div class="function-frame" id="function-frame-template" style="display: none">
-          <button class="function-name"></button>
-          <div class="function-vars">
-            <div id="function-var-template" style="display: none">
-              <span class="function-var-type"></span> <span class="function-var-name"></span>: <span class="function-var-value"></span>
+          <div id="stdout" style="display: none;" class="content">
+            user@c-learn:~$ ./program<br/>
+          </div>
+        </div>
+        <div id="memory" class="box vertical">
+          <div id="heap" class="content"></div>
+          <div id="stack" class="footer">
+            <div class="function-frame" id="function-frame-template" style="display: none">
+              <button class="function-name"></button>
+              <div class="function-vars">
+                <div id="function-var-template" style="display: none">
+                  <span class="function-var-type"></span> <span class="function-var-name"></span>: <span class="function-var-value"></span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </section>
+      <footer>
+      </footer>
     </div>
-
     <script src="./jquery-3.1.1.min.js"></script>
     <script src="./svg.min.js"></script>
     <script src="./ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
