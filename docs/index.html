@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <title>C-learn</title>
     <link rel="stylesheet" type="text/css" href="./style.css">
-    <link href="http://visjs.org/dist/vis.css" rel="stylesheet" type="text/css" />
+    <!-- <link href="http://visjs.org/dist/vis.css" rel="stylesheet" type="text/css" /> -->
   </head>
   <body>
     <button type="button" class="button" id="compile">Compile</button>
@@ -16,19 +16,26 @@
 <div id="editor">struct Node {
   int key;
   Node *next;
+  Node *prev;
 };
 
 int main(){
   Node *a = new Node;
-  a->key = 1;
-  cout << a->key;
-  a->next = new Node;
-  a->next->key = 2;
-  cout << a->next->key;
-  a->next->next = 0;
+  a->key = 0;
+  a->next = 0;
+  a->prev = 0;
+
+  for(int i = i; i < 10; i++) {
+    a->next = new Node;
+    a->next->prev = a;
+    a->next->next = 0;
+    a->next->key = i;
+    a = a->next;
+  }
+
   while(a != 0) {
     cout << a->key;
-    a = a->next;
+    a = a->prev;
   }
 }</div>
     <div id="stdout" style="display: none;">
@@ -50,12 +57,10 @@ int main(){
     </div>
 
     <script src="./jquery-3.1.1.min.js"></script>
+    <script src="./svg.min.js"></script>
     <script src="./ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
-    <!-- <script src="./canvas.js" type="text/javascript" charset="utf-8"></script> -->
-    <!-- <script src="./editor.js" type="text/javascript" charset="utf-8"></script> -->
-    <!-- <script src="http://d3js.org/d3.v5.min.js"></script> -->
-    <script src="http://visjs.org/dist/vis.js"></script>
     <script type="text/javascript" src="c-learn.js"></script>
+    <script type="text/javascript" src="heap.js"></script>
     <script type="text/javascript" src="script.js"></script>
   </body>
 </html>

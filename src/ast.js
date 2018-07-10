@@ -2,48 +2,48 @@ module.exports = {
   // Types
   TypName: function(typ) {
     this.typ = typ;
-    this.toString = () => typ;
+    this.asString = () => typ;
 
-    this.apply = (f) => f(this);
+    this.apply = function(f){ return f(this); }
   },
 
   TypBase: function(typ) {
     this.typ = typ;
-    this.toString = () => typ;
+    this.asString = () => typ;
 
-    this.apply = (f) => f(this);
+    this.apply = function(f){ return f(this); }
   },
 
   TypPtr: function(typ) {
     this.typ = typ;
-    this.toString = () => typ.toString() + '*';
+    this.asString = () => typ.asString() + '*';
 
-    this.apply = (f) => f(new module.exports.TypPtr(this.typ.apply(f)));
+    this.apply = function(f){ return f(new module.exports.TypPtr(this.typ.apply(f))); }
   },
 
   TypArr: function(typ, size) {
     this.typ = typ;
     this.size = size;
-    this.toString = () => typ.toString() + (size == undefined) ? '[]' : '[' + size + ']';
+    this.asString = () => typ.asString() + (size == undefined) ? '[]' : '[' + size + ']';
 
-    this.apply = (f) => f(new module.exports.TypArr(this.typ.apply(f), size));
+    this.apply = function(f){ return f(new module.exports.TypArr(this.typ.apply(f), size)); }
   },
 
   TypObj: function(name, fields) {
     this.name = name;
     this.fields = fields;
-    this.toString = () => {
+    this.asString = () => {
       if(name != undefined) {
         return name;
       }
       let ret = '{ ';
       for(field in fields) {
-        ret += fields[field].toString + ' ' + field + '; ';
+        ret += fields[field].asString + ' ' + field + '; ';
       }
       return ret + ' }';
     };
 
-    this.apply = (f) => {
+    this.apply = function(f){
       fields = {};
       for(field in this.fields) {
         fields[field] = this.fields[field].apply(f);
@@ -58,13 +58,13 @@ module.exports = {
     this.typ = typ;
     this.val = val;
 
-    this.apply = (f) => f(this);
+    this.apply = function(f){ return f(this); }
   },
 
   Var: function(name) {
     this.name = name;
 
-    this.apply = (f) => f(this);
+    this.apply = function(f){ return f(this); }
   },
 
   Decl: function(typ, name, val) {
@@ -72,14 +72,14 @@ module.exports = {
     this.name = name;
     this.val = val;
 
-    this.apply = (f) => f(new module.exports.Decl(this.typ.apply(f), this.name, this.val ? this.val.apply(f) : this.val));
+    this.apply = function(f){ return f(new module.exports.Decl(this.typ.apply(f), this.name, this.val ? this.val.apply(f) : this.val)); }
   },
 
   Uop: function(op, e1) {
     this.op = op;
     this.e1 = e1;
 
-    this.apply = (f) => f(new module.exports.Uop(this.op, this.e1.apply(f)));
+    this.apply = function(f){ return f(new module.exports.Uop(this.op, this.e1.apply(f))); }
   },
 
   Bop: function(op, e1, e2) {
@@ -87,7 +87,7 @@ module.exports = {
     this.e1 = e1;
     this.e2 = e2;
 
-    this.apply = (f) => f(new module.exports.Bop(this.op, this.e1.apply(f), this.e2.apply(f)));
+    this.apply = function(f){ return f(new module.exports.Bop(this.op, this.e1.apply(f), this.e2.apply(f))); }
   },
 
   Ternary: function(cond, e1, e2) {
@@ -95,31 +95,31 @@ module.exports = {
     this.e1 = e1;
     this.e2 = e2;
 
-    this.apply = (f) => f(new module.exports.Ternary(this.cond.apply(f), this.e1.apply(f), this.e2.apply(f)));
+    this.apply = function(f){ return f(new module.exports.Ternary(this.cond.apply(f), this.e1.apply(f), this.e2.apply(f))); }
   },
 
   Nop: function() {
-    this.apply = (f) => f(this);
+    this.apply = function(f){ return f(this); }
   },
 
   MemberAccess: function(e1, field) {
     this.e1 = e1;
     this.field = field;
 
-    this.apply = (f) => f(new module.exports.MemberAccess(this.e1.apply(f), this.field));
+    this.apply = function(f){ return f(new module.exports.MemberAccess(this.e1.apply(f), this.field)); }
   },
 
   IndexAccess: function(e1, index) {
     this.e1 = e1;
     this.index = index;
 
-    this.apply = (f) => f(new module.exports.IndexAccess(this.e1.apply(f), this.index));
+    this.apply = function(f){ return f(new module.exports.IndexAccess(this.e1.apply(f), this.index)); }
   },
 
   Deref: function(e1) {
     this.e1 = e1;
 
-    this.apply = (f) => f(new module.exports.Deref(this.e1.apply(f)));
+    this.apply = function(f){ return f(new module.exports.Deref(this.e1.apply(f))); }
   },
 
   Fn: function(ret, name, params, body, frame) {
@@ -129,7 +129,7 @@ module.exports = {
     this.body = body;
     this.frame = frame;
 
-    this.apply = (f) => f(new module.exports.Fn(this.ret, this.name, this.params.map((x) => x.apply(f)), this.body.apply(f), this.frame));
+    this.apply = function(f){ return f(new module.exports.Fn(this.ret, this.name, this.params.map((x) => x.apply(f)), this.body.apply(f), this.frame)); }
   },
 
   ObjTmpl: function(name, publ, priv) {
@@ -137,48 +137,49 @@ module.exports = {
     this.publ = publ;
     this.priv = priv;
 
-    this.apply = (f) => f(this);
+    this.apply = function(f){ return f(this); }
   },
 
   Call: function(fn, args) {
     this.fn = fn;
     this.args = args;
 
-    this.apply = (f) => f(new module.exports.Call(f(fn), this.args.map((x) => x.apply(f))));
+    this.apply = function(f){ return f(new module.exports.Call(f(fn), this.args.map((x) => x.apply(f)))); }
   },
 
   Return: function(e1) {
     this.e1 = e1;
 
-    this.apply = (f) => f(new module.exports.Return(this.e1.apply(f)));
+    this.apply = function(f){ return f(new module.exports.Return(this.e1.apply(f))); }
   },
 
   Loop: function(cond, body) {
     this.cond = cond;
     this.body = body;
 
-    this.apply = (f) => f(new module.exports.Loop(this.cond.apply(f), this.body.apply(f)));
+    this.apply = function(f){ return f(new module.exports.Loop(this.cond.apply(f), this.body.apply(f))); }
   },
 
   If: function(cond, body) {
     this.cond = cond;
     this.body = body;
 
-    this.apply = (f) => f(new module.exports.If(this.cond.apply(f), this.body.apply(f)));
+    this.apply = function(f){ return f(new module.exports.If(this.cond.apply(f), this.body.apply(f))); }
   },
 
   Scope: function(stmts) {
     this.stmts = stmts;
 
-    this.apply = (f) => f(new module.exports.Scope(this.stmts.map((x) => x.apply(f))));
+    this.apply = function(f){ return f(new module.exports.Scope(this.stmts.map((x) => x.apply(f)))); }
   },
 
   CFile: function(decls) {
     this.decls = decls;
 
 
-    this.apply = (f) => {
-      return f(new module.exports.CFile(this.decls.map((x) => x.apply(f))))};
+    this.apply = function(f){
+      return f(new module.exports.CFile(this.decls.map((x) => x.apply(f))))
+    };
   },
 
   // Compiler created
@@ -187,12 +188,12 @@ module.exports = {
     this.position = position;
     this.body = body;
 
-    this.apply = (f) => f(new module.exports.Steppoint(this.position, this.body.apply(f)));
+    this.apply = function(f){ return f(new module.exports.Steppoint(this.position, this.body.apply(f))); }
   },
 
   Builtin: function(f) {
     this.f = f;
 
-    this.apply = (f) => f(this);
+    this.apply = function(f){ return f(this); }
   },
 }

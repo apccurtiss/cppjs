@@ -13,44 +13,7 @@ editor.setShowPrintMargin(false);
  *  Graphical heap init
  */
 
- var nodes = new vis.DataSet();
- // nodes.add([
- //   {id: 1, label: 'a'},
- //   {id: 2, label: 'b', cid: 1},
- //   {id: 3, label: 'c', cid: 1}
- // ]);
-
-var edges = new vis.DataSet();
- // var edges = [
-//   {from: 1, to: 2},
-//   {from: 1, to: 3},
-//   {from: 2, to: 3}
-// ];
-
-var data = { nodes: nodes, edges: edges };
-
-var container = document.getElementById('heap');
-
-var options = {
-  physics: {
-    // enabled: false,
-    maxVelocity: 10,
-    minVelocity: 1,
-    stabilization: {
-      iterations: 100,
-    },
-  },
-}
-
-var heap = new vis.Network(container, data, options);
-
-// var join_options = {
-//   joinCondition:function(nodeOptions) {
-//     return nodeOptions.cid === 1;
-//   }
-// }
-
-// heap.clustering.cluster(join_options);
+heap = new MemDrawing('heap');
 
 /*
  *  C-learn.js init
@@ -61,11 +24,12 @@ var currentFrame = undefined;
 
 function onAssign(v, val) {
   console.log(v)
-  if(v instanceof runtime.ast.MemberAccess && v.field == 'next') {
-    edges.add({from: v.e1.val, to: val, arrows:'to'})
-  }
-  else if(v instanceof runtime.ast.Var) {
+  if(v instanceof runtime.ast.Var) {
     currentFrame.vars[v.name].find('.function-var-value')[0].innerHTML = val;
+  }
+  else {
+    console.log('Updating node with: ', v);
+    heap.updateNode(v, val);
   }
   console.log(v, 'was assigned to:', val);
 }
@@ -88,7 +52,7 @@ function onFnCall(name, frame) {
   for(var v in frame) {
     var newVar = $('#function-var-template').clone().css( 'display', '' ).appendTo(newFrame.find('.function-vars'));
     newVar.find('.function-var-name')[0].innerHTML = v;
-    newVar.find('.function-var-type')[0].innerHTML = frame[v].toString();
+    newVar.find('.function-var-type')[0].innerHTML = frame[v].asString();
     newVar.find('.function-var-value')[0].innerHTML = 'unset';
     vars[v] = newVar;
   }
@@ -103,7 +67,8 @@ function onFnEnd(name, ret) {
   // console.log(''', name, '' ended with return value:', ret);
 }
 function onDynamicAllocation(typ, loc) {
-  nodes.add({ id: loc, label: String(loc) } );
+  console.log('Adding node:', typ, 'at location:', loc)
+  heap.addNode(loc, typ);
   console.log('Item of type', typ, 'was allocated at:', loc);
 }
 function onPosChange(position) {

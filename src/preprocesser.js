@@ -6,7 +6,7 @@ function preprocess(node) {
     'bool': new ast.TypBase('bool'),
     'int': new ast.TypBase('int'),
     'float': new ast.TypBase('float'),
-  }
+  };
 
   function lookupTyp(t) {
     while(t instanceof ast.TypName) t = types[t.typ];
@@ -18,27 +18,29 @@ function preprocess(node) {
       var frame = {};
       node.body.apply((node) => {
         if(node instanceof ast.Decl) {
-          // console.log(node);
           frame[node.name] = lookupTyp(node.typ);
         }
         return node;
       });
       return new ast.Fn(node.ret, node.name, node.params, node.body, frame);
     }
-    if(node instanceof ast.ObjTmpl) {
+    else if(node instanceof ast.ObjTmpl) {
       fields = {};
       for(decl of node.publ.concat(node.priv)) {
         fields[decl.name] = lookupTyp(decl.typ);
       }
       types[node.name] = new ast.TypObj(node.name, fields);
-      return node;
     }
     else if(node instanceof ast.TypName) {
       return types[node.typ];
     }
-    else {
-      return node;
+    else if(node instanceof ast.Uop) {
+      // TODO(alex): Move conversion to TypName to parsing step
+      if(node.op == 'new') {
+        return new ast.Uop('new', lookupTyp(new ast.TypName(node.e1.name)));
+      }
     }
+    return node;
   }
 
   return node.apply(pp);

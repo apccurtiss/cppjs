@@ -39,7 +39,9 @@ var ident = ws(parse.bind(parse.cons(
 var typ = bind_list(
   ident,
   parse.eager(parse.many(ws(text.character('*')))),
-  (typ, ptrs) => ptrs.reduce((acc, _) => new ast.TypPtr(acc), new ast.TypName(typ)));
+  (typ, ptrs) => ptrs.reduce((acc, _) => {
+    return new ast.TypPtr(acc)
+  }, new ast.TypName(typ)));
 
 var var_name = ident;
 
@@ -54,16 +56,6 @@ var prefxs = (ops, next) => parse.bind(
   (ops) => parse.bind(
     next,
     (e) => parse.always(nu.foldr(
-      (acc, op) => new ast.Uop(op, acc),
-      e,
-      ops
-  ))));
-
-var postfxs = (ops, next) => parse.bind(
-  next,
-  (e) => parse.bind(
-    parse.many(ws(ops)),
-    (ops) => parse.always(nu.foldl(
       (acc, op) => new ast.Uop(op, acc),
       e,
       ops

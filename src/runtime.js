@@ -29,7 +29,7 @@ function Program(options) {
     }),
     '!malloc': new ast.Builtin((typ) => {
       var loc = this.generateHeapAddress(4);
-      this.memory[loc] = {};
+      this.memory[loc] = this.initMemory(typ);
       this.onDynamicAllocation(typ, loc);
       // console.log("Here:", loc)
       return new ast.Lit('ptr', loc);
@@ -145,6 +145,10 @@ function Program(options) {
     else if(current instanceof ast.TypPtr) {
       return this.stepgen(current.typ,
         (vt) => next(new ast.TypPtr(vt)));
+    }
+
+    else if(current instanceof ast.TypName) {
+      return next(current);
     }
 
     else if(current instanceof ast.TypArr) {
@@ -279,7 +283,6 @@ function Program(options) {
         }
       });
     }
-
     throw Error('Unimplemented type: ' + '"' + current.constructor.name) + '"';
   }
 

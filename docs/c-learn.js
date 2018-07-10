@@ -1814,278 +1814,267 @@ var Memoer = (function(compare, eq, root) {
 (exports.update = update);
 (exports.prune = prune);
 },{}],12:[function(require,module,exports){
-function Typ(typ, ptrs) {
-  this.typ = typ;
-  this.ptrs = ptrs;
-  this.toString = () => {
-    return typ + Array(ptrs+1).join('*');
-  }
-}
-
-function Lit(typ, val) {
-  this.typ = typ;
-  this.val = val;
-}
-
-function Ptr(typ, addr) {
-  this.typ = typ;
-  this.addr = addr;
-}
-
-function Ident(name) {
-  this.name = name;
-}
-
-function Var(name) {
-  this.name = name;
-}
-
-function Decl(typ, name, val) {
-  this.typ = typ;
-  this.name = name;
-  this.val = val;
-}
-
-function Uop(op, e1) {
-  this.op = op;
-  this.e1 = e1;
-}
-
-function Bop(op, e1, e2) {
-  this.op = op;
-  this.e1 = e1;
-  this.e2 = e2;
-}
-
-function Top(op, e1, e2) {
-  this.op = op;
-  this.e1 = e1;
-  this.e2 = e2;
-  this.e3 = e3;
-}
-
-function MemberAccess(e1, field) {
-  this.e1 = e1;
-  this.field = field;
-}
-
-function Assign(e1, e2) {
-  this.e1 = e1;
-  this.e2 = e2;
-}
-
-function Fn(ret, name, params, body, frame) {
-  this.ret = ret;
-  this.name = name;
-  this.params = params;
-  this.body = body;
-  this.frame = frame;
-}
-
-function ObjTmpl(name, publ, priv) {
-  this.name = name;
-  this.publ = publ;
-  this.priv = priv;
-}
-
-function Call(fn, args) {
-  this.fn = fn;
-  this.args = args;
-}
-
-function Loop(cond, body) {
-  this.cond = cond;
-  this.body = body;
-}
-
-function If(cond, body) {
-  this.cond = cond;
-  this.body = body;
-}
-
-function Scope(stmts) {
-  this.stmts = stmts;
-}
-
-function File(decls) {
-  this.decls = decls;
-}
-
-// Compiler created
-
-function Steppoint(position, body) {
-  this.position = position;
-  this.body = body;
-}
-
-function Builtin(f) {
-  this.f = f;
-}
-
-function Frame(fn, offsets, size) {
-  this.f = f;
-}
-
-// Runtime objects
-
-function Obj(typ, publ, priv) {
-  this.typ = typ;
-  this.publ = publ;
-  this.priv = priv;
-}
-
-function Walker(fn) {
-  function walk(node) {
-    fn(node);
-    if(node instanceof Typ || node instanceof Lit ||
-       node instanceof Var || node instanceof Ident ||
-       node instanceof ObjTmpl) {
-      return node;
-    }
-    else if(node instanceof Decl) {
-      return new Decl(node.name, walk(node.val));
-    }
-    else if(node instanceof Uop) {
-      return new Uop(node.op, walk(node.e1));
-    }
-    else if(node instanceof Bop) {
-      return new Bop(node.op, walk(node.e1), walk(node.e2));
-    }
-    else if(node instanceof Top) {
-      return new Top(node.op, walk(node.e1), walk(node.e2), walk(node.e3));
-    }
-    else if(node instanceof Fn) {
-      return new Fn(node.ret, node.name, node.params, walk(node.body), node.frame);
-    }
-    else if(node instanceof Call) {
-      return new Call(walk(node.fn), node.args.map(walk));
-    }
-    else if(node instanceof Loop) {
-      return new Loop(walk(node.cond), walk(node.body));
-    }
-    else if(node instanceof If) {
-      return new If(walk(node.cond), walk(node.body));
-    }
-    else if(node instanceof Scope) {
-      return new Scope(node.stmts.map(walk));
-    }
-    else if(node instanceof File) {
-      return new File(node.decls.map(walk));
-    }
-    else if(node instanceof Steppoint) {
-      return new Steppoint(node.position, walk(node.body));
-    }
-    else {
-      throw Error('Unimplemented type: ' + node.constructor.name);
-    }
-  }
-
-  this.walk = walk;
-}
-
 module.exports = {
-  Typ: Typ,
-  Lit: Lit,
-  Ptr: Ptr,
-  Ident: Ident,
-  Var: Var,
-  Decl: Decl,
-  Uop: Uop,
-  Bop: Bop,
-  Top: Top,
-  MemberAccess: MemberAccess,
-  Assign: Assign,
-  Fn: Fn,
-  ObjTmpl: ObjTmpl,
-  Call: Call,
-  Loop: Loop,
-  If: If,
-  Scope: Scope,
-  File: File,
-  Steppoint: Steppoint,
-  Builtin: Builtin,
-  Frame: Frame,
-  Obj: Obj,
-  Walker: Walker,
+  // Types
+  TypName: function(typ) {
+    this.typ = typ;
+    this.asString = () => typ;
+
+    this.apply = function(f){ return f(this); }
+  },
+
+  TypBase: function(typ) {
+    this.typ = typ;
+    this.asString = () => typ;
+
+    this.apply = function(f){ return f(this); }
+  },
+
+  TypPtr: function(typ) {
+    this.typ = typ;
+    this.asString = () => typ.asString() + '*';
+
+    this.apply = function(f){ return f(new module.exports.TypPtr(this.typ.apply(f))); }
+  },
+
+  TypArr: function(typ, size) {
+    this.typ = typ;
+    this.size = size;
+    this.asString = () => typ.asString() + (size == undefined) ? '[]' : '[' + size + ']';
+
+    this.apply = function(f){ return f(new module.exports.TypArr(this.typ.apply(f), size)); }
+  },
+
+  TypObj: function(name, fields) {
+    this.name = name;
+    this.fields = fields;
+    this.asString = () => {
+      if(name != undefined) {
+        return name;
+      }
+      let ret = '{ ';
+      for(field in fields) {
+        ret += fields[field].asString + ' ' + field + '; ';
+      }
+      return ret + ' }';
+    };
+
+    this.apply = function(f){
+      fields = {};
+      for(field in this.fields) {
+        fields[field] = this.fields[field].apply(f);
+      }
+      return f(new module.exports.TypObj(this.name, fields));
+    };
+  },
+
+  // AST nodes
+
+  Lit: function(typ, val) {
+    this.typ = typ;
+    this.val = val;
+
+    this.apply = function(f){ return f(this); }
+  },
+
+  Var: function(name) {
+    this.name = name;
+
+    this.apply = function(f){ return f(this); }
+  },
+
+  Decl: function(typ, name, val) {
+    this.typ = typ;
+    this.name = name;
+    this.val = val;
+
+    this.apply = function(f){ return f(new module.exports.Decl(this.typ.apply(f), this.name, this.val ? this.val.apply(f) : this.val)); }
+  },
+
+  Uop: function(op, e1) {
+    this.op = op;
+    this.e1 = e1;
+
+    this.apply = function(f){ return f(new module.exports.Uop(this.op, this.e1.apply(f))); }
+  },
+
+  Bop: function(op, e1, e2) {
+    this.op = op;
+    this.e1 = e1;
+    this.e2 = e2;
+
+    this.apply = function(f){ return f(new module.exports.Bop(this.op, this.e1.apply(f), this.e2.apply(f))); }
+  },
+
+  Ternary: function(cond, e1, e2) {
+    this.cond = cond;
+    this.e1 = e1;
+    this.e2 = e2;
+
+    this.apply = function(f){ return f(new module.exports.Ternary(this.cond.apply(f), this.e1.apply(f), this.e2.apply(f))); }
+  },
+
+  Nop: function() {
+    this.apply = function(f){ return f(this); }
+  },
+
+  MemberAccess: function(e1, field) {
+    this.e1 = e1;
+    this.field = field;
+
+    this.apply = function(f){ return f(new module.exports.MemberAccess(this.e1.apply(f), this.field)); }
+  },
+
+  IndexAccess: function(e1, index) {
+    this.e1 = e1;
+    this.index = index;
+
+    this.apply = function(f){ return f(new module.exports.IndexAccess(this.e1.apply(f), this.index)); }
+  },
+
+  Deref: function(e1) {
+    this.e1 = e1;
+
+    this.apply = function(f){ return f(new module.exports.Deref(this.e1.apply(f))); }
+  },
+
+  Fn: function(ret, name, params, body, frame) {
+    this.ret = ret;
+    this.name = name;
+    this.params = params;
+    this.body = body;
+    this.frame = frame;
+
+    this.apply = function(f){ return f(new module.exports.Fn(this.ret, this.name, this.params.map((x) => x.apply(f)), this.body.apply(f), this.frame)); }
+  },
+
+  ObjTmpl: function(name, publ, priv) {
+    this.name = name;
+    this.publ = publ;
+    this.priv = priv;
+
+    this.apply = function(f){ return f(this); }
+  },
+
+  Call: function(fn, args) {
+    this.fn = fn;
+    this.args = args;
+
+    this.apply = function(f){ return f(new module.exports.Call(f(fn), this.args.map((x) => x.apply(f)))); }
+  },
+
+  Return: function(e1) {
+    this.e1 = e1;
+
+    this.apply = function(f){ return f(new module.exports.Return(this.e1.apply(f))); }
+  },
+
+  Loop: function(cond, body) {
+    this.cond = cond;
+    this.body = body;
+
+    this.apply = function(f){ return f(new module.exports.Loop(this.cond.apply(f), this.body.apply(f))); }
+  },
+
+  If: function(cond, body) {
+    this.cond = cond;
+    this.body = body;
+
+    this.apply = function(f){ return f(new module.exports.If(this.cond.apply(f), this.body.apply(f))); }
+  },
+
+  Scope: function(stmts) {
+    this.stmts = stmts;
+
+    this.apply = function(f){ return f(new module.exports.Scope(this.stmts.map((x) => x.apply(f)))); }
+  },
+
+  CFile: function(decls) {
+    this.decls = decls;
+
+
+    this.apply = function(f){
+      return f(new module.exports.CFile(this.decls.map((x) => x.apply(f))))
+    };
+  },
+
+  // Compiler created
+
+  Steppoint: function(position, body) {
+    this.position = position;
+    this.body = body;
+
+    this.apply = function(f){ return f(new module.exports.Steppoint(this.position, this.body.apply(f))); }
+  },
+
+  Builtin: function(f) {
+    this.f = f;
+
+    this.apply = function(f){ return f(this); }
+  },
 }
 
 },{}],13:[function(require,module,exports){
 var ast = require('./ast');
+var parser = require('./parser');
+var pp = require('./preprocesser');
 
 function cmpl(node) {
-  if(node instanceof ast.Typ || node instanceof ast.Lit ||
-     node instanceof ast.Var || node instanceof ast.Ident ||
-     node instanceof ast.ObjTmpl) {
-    return node;
-  }
-  else if(node instanceof ast.Decl) {
+  if(node instanceof ast.Decl) {
     if(node.val) {
-      return new ast.Bop('=', new ast.Var(node.name), cmpl(node.val));
+      return new ast.Bop('=', new ast.Var(node.name), node.val.apply(cmpl));
     }
+    return new ast.Nop();
   }
   else if(node instanceof ast.Uop) {
-    if(node.op == 'new') {
-      return new ast.Call(new ast.Var('!malloc'), [node.e1]);
+    switch(node.op) {
+      case 'new':
+        return new ast.Call(new ast.Var('!malloc'), [node.e1]);
+      case '*':
+        return new ast.Deref(node.e1.apply(cmpl));
+      // TODO(alex): Avoid side effect duplication.
+      case '++':
+        return new ast.Bop('=', node.e1.apply(cmpl),
+          new ast.Bop('+', node.e1.apply(cmpl), new ast.Lit(new ast.TypBase('int'), 1)));
+      case '--':
+        return new ast.Bop('=', node.e1.apply(cmpl),
+          new ast.Bop('-', node.e1.apply(cmpl), new ast.Lit(new ast.TypBase('int'), 1)));
+      default:
+        return new ast.Uop(node.op, node.e1.apply(cmpl));
     }
-    return new ast.Uop(node.op, cmpl(node.e1));
   }
   else if(node instanceof ast.Bop) {
     switch(node.op) {
-      // case '=':
-      //   return new ast.Assign(cmpl(node.e1), cmpl(node.e2));
-      case '.':
-        return new ast.MemberAccess(cmpl(node.e1), node.e2.name);
-      case '->':
-        return new ast.MemberAccess(new ast.Uop('*', cmpl(node.e1)), node.e2.name);
       case '<<':
         if(node.e1.name == 'cout') {
-          return new ast.Call(new ast.Var('!print'), [cmpl(node.e2)]);
+          return new ast.Call(new ast.Var('!print'), [node.e2.apply(cmpl)]);
         }
       default:
-        return new ast.Bop(node.op, cmpl(node.e1), cmpl(node.e2));
+        return new ast.Bop(node.op, node.e1.apply(cmpl), node.e2.apply(cmpl));
     }
   }
-  else if(node instanceof ast.Top) {
-    return new ast.Top(node.op, cmpl(node.e1), cmpl(node.e2), cmpl(node.e3));
-  }
-  else if(node instanceof ast.Fn) {
-    frame = {};
-    var frameWalker = new ast.Walker((node) => {
-      if(node instanceof ast.Decl) {
-        frame[node.name] = node.typ;
-      }
-    });
-    frameWalker.walk(node.body);
-    return new ast.Fn(node.ret, node.name, node.params, cmpl(node.body), frame);
-  }
-  else if(node instanceof ast.Call) {
-    return new ast.Call(cmpl(node.fn), node.args.map(cmpl));
-  }
-  else if(node instanceof ast.Loop) {
-    return new ast.Loop(cmpl(node.cond), cmpl(node.body));
-  }
-  else if(node instanceof ast.If) {
-    return new ast.If(cmpl(node.cond), cmpl(node.body));
-  }
-  else if(node instanceof ast.Scope) {
-    return new ast.Scope(node.stmts.map(cmpl));
-  }
-  else if(node instanceof ast.File) {
-    return new ast.File(node.decls.map(cmpl));
-  }
-  else if(node instanceof ast.Steppoint) {
-    return new ast.Steppoint(node.position, cmpl(node.body));
-  }
   else {
-    throw Error('Unimplemented type: ' + node.constructor.name);
+    return node;
   }
 }
 
 module.exports = {
-  compile: cmpl,
+  compileFile: (code) => {
+    var parsed = parser.parseFile(code);
+    // console.log('parsed: ');
+    // console.log(parsed.decls[1].body.stmts[0]);
+    var ppd = pp.preprocess(parsed);
+    // console.log('ppd: ');
+    // console.log(ppd.decls[1].body.stmts[0]);
+    // console.log('ppd.apply(cmpl): ');
+    // console.log(ppd.apply(cmpl).decls[1].body.stmts[0]);
+    return ppd.apply(cmpl);
+  },
+  compileStmt: (code) => pp.preprocess(parser.parseStmt(code)).apply(cmpl),
+  compileExpr: (code) => pp.preprocess(parser.parseExpr(code)).apply(cmpl),
 };
 
-},{"./ast":12}],14:[function(require,module,exports){
+},{"./ast":12,"./parser":14,"./preprocesser":15}],14:[function(require,module,exports){
 "use strict";
 
 var parse = require('bennu').parse;
@@ -2127,27 +2116,11 @@ var ident = ws(parse.bind(parse.cons(
 var typ = bind_list(
   ident,
   parse.eager(parse.many(ws(text.character('*')))),
-  (typ, ptrs) => new ast.Typ(typ, ptrs.length-1));
-// var typ = parse.expected(
-//   'type',
-//   parse.bind(parse.eager(parse.cons(ident, parse.many(ws(text.character('*'))))),
-//     // (typ) => parse.always(typ)))
-//     (x) => parse.bind(parse.getState,
-//       (state) => {
-//         var typ = x[0];
-//         var ptrs = x.length-1;
-//         if (state.types.indexOf(typ) != -1) {
-//           return parse.always(new ast.Typ(typ, ptrs));
-//         }
-//         else {
-//           return parse.fail('Expected type, got ' + typ)
-//         }
-//       })));
+  (typ, ptrs) => ptrs.reduce((acc, _) => {
+    return new ast.TypPtr(acc)
+  }, new ast.TypName(typ)));
 
 var var_name = ident;
-// var var_name = parse.next(
-//   parse.expected('variable name, not type', parse.not(parse.look(typ))),
-//   ident)
 
 var number = parse.bind(
   parse.many1(text.digit),
@@ -2155,31 +2128,11 @@ var number = parse.bind(
     (d, acc) => d + acc,
     ds)))));
 
-// parse.late used to revolve cyclical reference
-var atom = parse.late(() => ws(parse.expected(
-  'Expected atom',
-  parse.choice(
-    number,
-    parse.bind(ident, (n) => parse.always(new ast.Var(n))),
-    lang.between(text.character('('),
-                 text.character(')'),
-                 expr)))));
-
 var prefxs = (ops, next) => parse.bind(
-  parse.many(ops),
+  parse.many(ws(ops)),
   (ops) => parse.bind(
     next,
     (e) => parse.always(nu.foldr(
-      (acc, op) => new ast.Uop(op, acc),
-      e,
-      ops
-  ))));
-
-var sufxs = (ops, next) => parse.bind(
-  next,
-  (e) => parse.bind(
-    parse.many(ops),
-    (ops) => parse.always(nu.foldl(
       (acc, op) => new ast.Uop(op, acc),
       e,
       ops
@@ -2197,14 +2150,66 @@ var bopsr = (ops, next) => lang.chainr1(
     (op) => parse.always((e1, e2) => new ast.Bop(op, e1, e2))),
   next);
 
+var ternary = (next) => lang.chainr1(
+  bind_list(
+    lang.between(
+      ws(text.character('?')),
+      ws(text.character(':')),
+      next
+    ),
+    (e1) => parse.always((cond, e2) => new ast.Ternary(cond, e2, e3))),
+  next);
+
 // https://msdn.microsoft.com/en-us/library/126fe14k.aspx
-var group1 = bopsl(text.string('::'), atom);
-var group2 = group1; // TODO(alex): Postfixes
+var expr = parse.late(() => group18);
+var group0 = ws(parse.choice(
+    number,
+    parse.bind(ident, (n) => parse.always(new ast.Var(n))),
+    lang.between(text.character('('),
+                 text.character(')'),
+                 expr)));
+var group1 = bopsl(text.string('::'), group0);
+var group2 = parse.late(() => parse.choice(
+    // TODO(alex): Casting
+    // TODO(alex): typeid
+    // Because this group's postfix operators parse in very different ways, each
+    // parser returns a function that creates the AST node, allowing them to be
+    // called in sequence, with the result of each one being passed to the next.
+    bind_list(
+      group1,
+      parse.many(ws(parse.choice(
+        parse.bind(text.trie(['++', '--']), (op) => parse.always((e) =>
+          new ast.Uop(op, e))),
+        bind_list(
+          text.trie(['.', '->']),
+          ws(ident),
+          (op, field) => (e) =>
+            new ast.MemberAccess(op == '.' ? e : new ast.Uop('*', e), field)),
+        parse.bind(lang.between(
+          ws(text.character('[')),
+          ws(text.character(']')),
+          expr),
+          (index) => parse.always((e) =>
+            new ast.IndexAccess(e, index))),
+        parse.bind(lang.between(
+          ws(text.character('(')),
+          ws(text.character(')')),
+          // Group17 used here because commas are a valid operator in group18.
+          parse.eager(lang.sepBy(ws(text.character(',')), group17))),
+          (args) => parse.always((e) =>
+            new ast.Call(e, args)))
+      ))),
+      (e, opfns) => {
+        return nu.foldl(
+        (acc, opfn) => opfn(acc),
+        e,
+        opfns
+      )
+    })));
 // TODO(alex): Add casting
 var group3 = prefxs(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&',
     '*', 'new', 'delete']), group2);
-// var group3 = group2;
-var group4 = bopsl(text.trie(['.', '->']), group3);
+var group4 = bopsl(text.trie(['.*', '->*']), group3);
 var group5 = bopsl(text.oneOf('*/%'), group4);
 var group6 = bopsl(text.oneOf('+-'), group5);
 var group7 = bopsl(text.trie(['<<', '>>']), group6);
@@ -2215,16 +2220,23 @@ var group11 = bopsl(text.character('^'), group10);
 var group12 = bopsl(text.character('|'), group11);
 var group13 = bopsl(text.string('&&'), group12);
 var group14 = bopsl(text.string('||'), group13);
-var group15 = group14; // TODO(alex) conditional
+var group15 = ternary(group14);
 var group16 = bopsr(text.trie(['=', '*=', '/=', '+=', '-=']), group15);
 var group17 = group16; // TODO(alex) throw
 var group18 = bopsl(text.character(','), group17);
-var expr = ws(group18);
 
 var var_decl = bind_list(
   typ,
   ws(var_name),
-  (typ, name) => new ast.Decl(typ, name));
+  parse.many(lang.between(
+    ws(text.character('[')),
+    ws(text.character(']')),
+    expr)),
+  (typ, name, arrs) => new ast.Decl(
+    nu.foldl(
+      (acc, h) => new ast.TypArr(acc, h),
+      typ,
+      arrs), name));
 
 var var_def = bind_list(
   var_decl,
@@ -2244,7 +2256,7 @@ var while_loop = parse.late(() =>
     ws(lang.between(
       text.character('('),
       text.character(')'),
-      step_point(expr))),
+      ws(step_point(expr)))),
     ws(stmt),
     (_, cond, body) => {
       return new ast.Loop(cond, body)
@@ -2277,14 +2289,20 @@ var for_loop = parse.late(() =>
 var scope = parse.late(() => lang.between(
     text.character('{'),
     text.character('}'),
-    parse.bind(stmts, s => parse.always(new ast.Scope(s)))))
+    parse.bind(ws(stmts), s => parse.always(new ast.Scope(s)))))
 
 var stmt = ws(parse.choice(
   while_loop,
   for_loop,
   scope,
+  step_point(parse.bind(lang.between(
+    text.string('return'),
+    semi,
+    ws(expr)),
+    (e) => parse.always(new ast.Return(e)))),
   step_point(parse.attempt(lang.then(var_def, semi))),
-  step_point(lang.then(expr, semi))));
+  step_point(lang.then(expr, semi)),
+  step_point(parse.next(semi, parse.always(new ast.Nop())))));
 
 var stmts = parse.eager(parse.many(ws(stmt)));
 
@@ -2327,16 +2345,12 @@ var file = parse.bind(lang.then(
         lang.then(obj_tmpl, ws(semi)),
         fn_def)))),
     parse.eof),
-    (body) => parse.always(new ast.File(body)));
+    (body) => parse.always(new ast.CFile(body)));
 
-
-function UserData() {
-  this.types = ['int', 'char', 'float'];
-}
-var parseFile = (s) => parse.run(file, s, new UserData())
-var parseFn = (s) => parse.run(fn_def, s, new UserData())
-var parseExpr = (s) => parse.run(expr, s, new UserData())
-var parseStmt = (s) => parse.run(stmt, s, new UserData())
+var parseFile = (s) => parse.run(file, s)
+var parseFn = (s) => parse.run(fn_def, s)
+var parseExpr = (s) => parse.run(expr, s)
+var parseStmt = (s) => parse.run(stmt, s)
 
 // parseFile(');
 // console.log(parse.run(ident, 's'))
@@ -2362,11 +2376,63 @@ module.exports = {
   parseStmt: parseStmt,
 }
 
-},{"./ast":12,"bennu":5,"nu-stream":10}],"runtime":[function(require,module,exports){
+},{"./ast":12,"bennu":5,"nu-stream":10}],15:[function(require,module,exports){
+var ast = require('./ast');
+
+function preprocess(node) {
+  var types = {
+    'char': new ast.TypBase('char'),
+    'bool': new ast.TypBase('bool'),
+    'int': new ast.TypBase('int'),
+    'float': new ast.TypBase('float'),
+  };
+
+  function lookupTyp(t) {
+    while(t instanceof ast.TypName) t = types[t.typ];
+    return t;
+  }
+
+  function pp(node) {
+    if(node instanceof ast.Fn) {
+      var frame = {};
+      node.body.apply((node) => {
+        if(node instanceof ast.Decl) {
+          frame[node.name] = lookupTyp(node.typ);
+        }
+        return node;
+      });
+      return new ast.Fn(node.ret, node.name, node.params, node.body, frame);
+    }
+    else if(node instanceof ast.ObjTmpl) {
+      fields = {};
+      for(decl of node.publ.concat(node.priv)) {
+        fields[decl.name] = lookupTyp(decl.typ);
+      }
+      types[node.name] = new ast.TypObj(node.name, fields);
+    }
+    else if(node instanceof ast.TypName) {
+      return types[node.typ];
+    }
+    else if(node instanceof ast.Uop) {
+      // TODO(alex): Move conversion to TypName to parsing step
+      if(node.op == 'new') {
+        return new ast.Uop('new', lookupTyp(new ast.TypName(node.e1.name)));
+      }
+    }
+    return node;
+  }
+
+  return node.apply(pp);
+}
+
+module.exports = {
+  preprocess: preprocess,
+};
+
+},{"./ast":12}],"runtime":[function(require,module,exports){
 "use strict";
 
 var ast = require('./ast');
-var parser = require('./parser');
 var compiler = require('./compiler');
 
 function Program(options) {
@@ -2395,25 +2461,59 @@ function Program(options) {
     }),
     '!malloc': new ast.Builtin((typ) => {
       var loc = this.generateHeapAddress(4);
-      this.memory[loc] = {};
+      this.memory[loc] = this.initMemory(typ);
       this.onDynamicAllocation(typ, loc);
       // console.log("Here:", loc)
       return new ast.Lit('ptr', loc);
     }),
   };
 
+  this.initMemory = function(typ) {
+    if(typ instanceof ast.TypBase) {
+      switch(typ.typ) {
+        case 'string':
+          return '';
+        default:
+          return 0;
+      }
+    }
+    if(typ instanceof ast.TypPtr) {
+      return undefined;
+    }
+    else if(typ instanceof ast.TypArr) {
+      var newArr = Array(typ.size.val);
+      for(var i = 0; i < newArr.length; i++) {
+        newArr[i] = this.initMemory(typ.typ);
+      }
+      return newArr;
+    }
+    else if(typ instanceof ast.TypObj) {
+      return Object.keys(typ.fields).reduce(
+        (acc, h) => {
+          acc[h] = this.initMemory(typ.fields[h]);
+          return acc;
+        }, {});
+    }
+    else {
+      throw Error('Unsupported type: ' + typ.constructor.name)
+    }
+  };
+
   this.getMemory = function(loc) {
     if(loc instanceof ast.Var) {
       return this.memory[loc.name];
     }
-    else if (loc instanceof ast.Lit){
-      return this.memory[loc.val];
+    else if (loc instanceof ast.Deref){
+      return this.memory[loc.e1.val];
+    }
+    else if (loc instanceof ast.IndexAccess){
+      return this.getMemory(loc.e1)[this.getVal(loc.index)];
     }
     else if (loc instanceof ast.MemberAccess){
       return this.getMemory(loc.e1)[loc.field];
     }
     else {
-      throw Error('Internal error: Location was not a var, lit, or member access.');
+      throw Error('Internal error: Location was not a var, deref, index, or member access.');
     }
   }
 
@@ -2421,39 +2521,37 @@ function Program(options) {
     if(loc instanceof ast.Var) {
       this.memory[loc.name] = val;
     }
-    else if (loc instanceof ast.Lit){
-      this.memory[loc.val] = val;
+    else if (loc instanceof ast.Deref){
+      this.memory[loc.e1.val] = val;
+    }
+    else if (loc instanceof ast.IndexAccess){
+      this.getMemory(loc.e1)[this.getVal(loc.index)] = val;
     }
     else if (loc instanceof ast.MemberAccess){
       this.getMemory(loc.e1)[loc.field] = val;
     }
     else {
-      throw Error('Internal error: Location was not a var, lit, or member access.');
+      throw Error('Internal error: Location was not a var, deref, index, or member access.');
     }
   }
 
   this.getVal = function(leaf) {
-    if(leaf instanceof ast.Var) {
+    if(leaf instanceof ast.Var || leaf instanceof ast.Deref) {
       return this.getMemory(leaf);
     }
     else if(leaf instanceof ast.MemberAccess) {
-      // console.log("Memory: ", this.memory)
-      // console.log("e1: ", leaf.e1)
       return this.getMemory(leaf.e1)[leaf.field];
     }
     else if(leaf instanceof ast.Lit) {
       return leaf.val;
     }
     else {
-      throw Error('Internal error: Expression was not variable or value!');
+      throw Error('Internal error: Expression was not variable, index, deref, member access, or value!');
     }
   }
 
-  var parsed_file = parser.parseFile(options.code);
-  // console.log("Parsed file: ")
-  // console.log(JSON.stringify(parsed_file, null, 1));
-  var compiled_file = compiler.compile(parsed_file);
-  // console.log("Preprocessed file: ")
+  var compiled_file = compiler.compileFile(options.code);
+  // console.log("Compiled file: ")
   // console.log(JSON.stringify(compiled_file, null, 1));
 
   for(var decl of compiled_file.decls) {
@@ -2469,10 +2567,36 @@ function Program(options) {
   }
 
   this.stepgen = function(current, next) {
-    if(current instanceof ast.Builtin || current instanceof ast.Lit ||
-       current instanceof ast.Var) {
+    if(current instanceof ast.Builtin || current instanceof ast.TypBase ||
+      current instanceof ast.Lit || current instanceof ast.Var
+      || current instanceof ast.Nop) {
       // console.log("On: ", current)
       return next(current);
+    }
+
+    else if(current instanceof ast.TypPtr) {
+      return this.stepgen(current.typ,
+        (vt) => next(new ast.TypPtr(vt)));
+    }
+
+    else if(current instanceof ast.TypName) {
+      return next(current);
+    }
+
+    else if(current instanceof ast.TypArr) {
+      return this.stepgen(current.typ,
+        (vt) => this.stepgen(current.size,
+          (vs) => next(new ast.TypArr(vt, vs))));
+    }
+
+    else if(current instanceof ast.TypObj) {
+      var fields = Object.keys(current.fields).reduce((acc, h) => {
+        return this.stepgen(current.fields[h], (hv) => {
+          acc[h] = hv;
+          return acc;
+        });
+      }, {});
+      return next(new ast.TypObj(current.name, fields));
     }
 
     else if(current instanceof ast.Scope) {
@@ -2490,8 +2614,6 @@ function Program(options) {
             return next(new ast.Lit('int', -this.getVal(v1)));
           case '+':
             return next(v1);
-          case '*':
-            return next(new ast.Lit('ptr', this.getMemory(v1)));
           default:
             throw Error('Unimplemented uop: ' + current.op);
         }
@@ -2510,12 +2632,20 @@ function Program(options) {
               return next(new ast.Lit('int', this.getVal(v1) + this.getVal(v2)));
             case '-':
               return next(new ast.Lit('int', this.getVal(v1) - this.getVal(v2)));
-            case '<<':
-              return next(new ast.Lit('int', this.getVal(v1) << this.getVal(v2)));
+            case '*':
+              return next(new ast.Lit('int', this.getVal(v1) * this.getVal(v2)));
+            case '/':
+              return next(new ast.Lit('int', this.getVal(v1) / this.getVal(v2)));
             case '!=':
               return next(new ast.Lit('bool', this.getVal(v1) != this.getVal(v2)));
             case '<':
-              return next(new ast.Lit('bool', this.getVal(v1) != this.getVal(v2)));
+              return next(new ast.Lit('bool', this.getVal(v1) < this.getVal(v2)));
+            case '>':
+              return next(new ast.Lit('bool', this.getVal(v1) > this.getVal(v2)));
+            case '<=':
+              return next(new ast.Lit('bool', this.getVal(v1) <= this.getVal(v2)));
+            case '>=':
+              return next(new ast.Lit('bool', this.getVal(v1) >= this.getVal(v2)));
             default:
               throw Error('Unimplemented bop: ' + current.op);
           }
@@ -2526,6 +2656,20 @@ function Program(options) {
     else if(current instanceof ast.MemberAccess) {
       return this.stepgen(current.e1, (v1) => {
         return next(new ast.MemberAccess(v1, current.field));
+      });
+    }
+
+    else if(current instanceof ast.IndexAccess) {
+      return this.stepgen(current.e1, (v1) => {
+        return this.stepgen(current.index, (v2) => {
+          return next(new ast.IndexAccess(v1, v2));
+        });
+      });
+    }
+
+    else if(current instanceof ast.Deref) {
+      return this.stepgen(current.e1, (v1) => {
+        return next(new ast.Deref(new ast.Lit('ptr', this.getVal(v1))));
       });
     }
 
@@ -2541,6 +2685,11 @@ function Program(options) {
         else {
           console.assert(current.args.length == 0);
           this.onFnCall(v1.name, v1.frame);
+          for(var v in v1.frame) {
+            this.setMemory(new ast.Var(v), this.initMemory(v1.frame[v]));
+          }
+          // console.log("MEMORY:")
+          // console.log(this.memory);
           return (_) => this.stepgen(v1.body, (r) => {
             this.onFnEnd(v1.name, r);
             next(r);
@@ -2550,10 +2699,7 @@ function Program(options) {
     }
 
     else if(current instanceof ast.Steppoint) {
-      // console.log("On: ", current)
-      // this.position = current.position;
       return (_) => {
-        // console.log("Inside: ", current)
         this.position = current.position;
         return this.stepgen(current.body, next);
       };
@@ -2569,28 +2715,9 @@ function Program(options) {
         }
       });
     }
-
     throw Error('Unimplemented type: ' + '"' + current.constructor.name) + '"';
   }
 
-  // console.log(this.memory['main'].body.body)
-  // stepper = this.stepgen(this.memory['main'].body, (_) => {
-  // var tmp_ast = new ast.Steppoint({end:1}, new ast.Steppoint({end:2}, new ast.Lit(2, 2)));
-  // var tmp_ast = new ast.Scope([
-  //   new ast.Steppoint({start: 1, end: 2}, new ast.Lit(1, 1)),
-  //   new ast.Steppoint({start: 3, end: 4}, new ast.Lit(2, 2)),
-  // ]);
-  // var tmp_ast = new ast.Scope([
-  //   new ast.Lit(1, 1),
-  //   new ast.Lit(2, 2),
-  // ]);
-  // console.log(tmp_ast)
-  // var stepper = this.stepgen(tmp_ast, (n) => {
-  //   this.position = undefined;
-  //   this.done = true;
-  //   return n;
-  // });
-  // console.log(stepper)
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
     this.position = undefined;
     return null;
@@ -2603,7 +2730,7 @@ function Program(options) {
     return stepper;
   }
 
-  this.run = function() {
+  this.run = () => {
     while(this.step());
   };
 }
@@ -2613,4 +2740,4 @@ module.exports = {
   ast: ast,
 }
 
-},{"./ast":12,"./compiler":13,"./parser":14}]},{},[]);
+},{"./ast":12,"./compiler":13}]},{},[]);
