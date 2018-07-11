@@ -23,6 +23,7 @@ var currentFrame = undefined;
 
 function onAssign(v, val) {
   if(v instanceof runtime.ast.Var) {
+    console.log(v)
     currentFrame.vars[v.name].find('.function-var-value')[0].innerHTML = val;
   }
   else {
@@ -42,7 +43,7 @@ function onFnCall(name, frame) {
         panel.style.display = 'block';
     }
   });
-  // console.log(newFrame.find('.function-name'))
+
   newFrame.find('.function-name')[0].innerHTML = name;
   var vars = {};
   for(var v in frame) {
@@ -59,17 +60,22 @@ function onFnCall(name, frame) {
     prev: currentFrame,
   }
 }
+
 function onFnEnd(name, ret) {
-  // console.log(''', name, '' ended with return value:', ret);
+  currentFrame.dom.remove();
+  currentFrame = currentFrame.prev;
 }
+
 function onDynamicAllocation(typ, loc) {
   console.log('Adding node:', typ, 'at location:', loc)
   heap.addNode(loc, typ);
   console.log('Item of type', typ, 'was allocated at:', loc);
 }
+
 function onPosChange(position) {
   console.log('Position changed to', position);
 }
+
 function onPrint(text) {
   document.getElementById('stdout').innerHTML += text.replace('\n', '<br/>');
 }
@@ -109,6 +115,9 @@ function step() {
   editor.session.removeMarker(positionMarker);
   if(!program.step()) {
     return false;
+  }
+  if(program.position == undefined) {
+    return;
   }
   var start = editor.session.doc.indexToPosition(program.position.start, 0);
   var end = editor.session.doc.indexToPosition(program.position.end, 0);

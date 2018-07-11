@@ -108,6 +108,32 @@ test('Basic linked list.', function(t) {
   t.equal(output, '12');
   t.equal(dynamicAllocations, 2);
 });
+
+test('Calling functions.', function(t) {
+  t.plan(1);
+
+  var output = '';
+  var program = new runtime.Program({
+    onPrint: (text) => { output += text; },
+    code: `
+    int add_two( int x , int y ) {
+      cout << 0;
+      return x + y ;
+    }
+
+    int add_three( int x , int y , int z ) {
+      cout << 1;
+      return add_two ( add_two ( x , y ) , z ) ;
+    }
+
+    int main ( ) {
+      cout << add_three ( 1 , 2 , 3 ) ;
+    }`
+  });
+
+  program.run();
+  t.equal(output, '1006');
+});
 // test('setting and loading values from memory', function(t) {
 //   t.plan(5);
 //

@@ -7,7 +7,7 @@ function cmpl(node) {
     if(node.val) {
       return new ast.Bop('=', new ast.Var(node.name), node.val.apply(cmpl));
     }
-    return new ast.Nop();
+    return node;
   }
   else if(node instanceof ast.Uop) {
     switch(node.op) {

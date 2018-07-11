@@ -21,23 +21,18 @@
       </header>
       <section id="content">
         <div id="program" class="box vertical">
-          <div id="editor" class="content">struct Node {
-  int key;
-  Node *next;
-};
+          <div id="editor" class="content">int add_two( int x , int y ) {
+  cout << 0;
+  return x + y ;
+}
+
+int add_three( int x , int y , int z ) {
+  cout << 1;
+  return add_two ( add_two ( x , y ) , z ) ;
+}
 
 int main ( ) {
-  Node *head;
-  head = new Node;
-  head->key = 1;
-  head->next = new Node;
-  head->next->key = 2;
-  head->next->next = 0;
-
-  while(head != 0) {
-    cout << head->key;
-    head = head->next;
-  }
+  cout << add_three ( 1 , 2 , 3 ) ;
 }</div>
           <div id="stdout" style="display: none;" class="content">
             user@c-learn:~$ ./program<br/>

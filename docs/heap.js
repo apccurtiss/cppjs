@@ -152,8 +152,8 @@ function MemDrawing(canvas) {
     }
   }
 
+  dragging = undefined;
   function addNode(loc, typ) {
-    dragging = undefined;
     function onMouseDown() {
       dragging = this;
     }
@@ -182,28 +182,36 @@ function MemDrawing(canvas) {
   }
 
   function applyForce(source, target) {
-    const resting = 100;
-    const forceconstant = 0.1;
+    const resting = 50;
+    const forceconstant = 0.04;
 
-    var sx = svgLookup(source).cx(), sy = svgLookup(source).cy();
-    var tx = svgLookup(target).cx(), ty = svgLookup(target).cy();
+    var s = svgLookup(source);
+    var t = svgLookup(target);
 
-    var dist = Math.sqrt((sx - tx) * (sx - tx) + (sy - ty) * (sy - ty));
-    var theta = Math.atan((ty - sy) / (tx - sx)) || 0;
+    var sx = s.cx(), sy = s.cy();
+    var tx = t.cx(), ty = t.cy();
+    var w = (s.bbox().width + t.bbox().width) / 2;
+    var h = (s.bbox().height + t.bbox().height) / 2;
 
-    var force = (resting - dist) * forceconstant;
-    // console.log(force)
-    if(dist > resting && svgLookup(source).remember('target') != svgLookup(target)) {
-        return;
+    var vdist = Math.abs(sy - ty);
+    var hdist = Math.abs(sx - tx);
+
+    var hforce = vforce = 0;
+
+    if(vdist < h + resting && hdist < w + resting && hdist < w) {
+      vforce = (h + resting - vdist) * forceconstant * (sy > ty ? 1 : -1);
     }
 
-    var forcex = Math.acos(theta) * force;
-    var forcey = Math.asin(theta) * force;
+    if(hdist < w + resting && vdist < h + resting && vdist < h) {
+      hforce = (w + resting - hdist) * forceconstant * (sx > tx ? 1 : -1);
+    }
 
-    svgLookup(source).dx(forcex).dy(forcey);
-    svgLookup(target).dx(-forcex).dy(-forcey);
+    if(s != dragging) {
+      s.dx(hforce).dy(vforce);
+    }
+    t.dx(-hforce).dy(-vforce);
 
-    return Math.max(Math.abs(forcex), Math.abs(forcey));
+    return Math.max(Math.abs(hforce), Math.abs(vforce));
   }
 
   function connect(source, target) {

@@ -2024,7 +2024,7 @@ function cmpl(node) {
     if(node.val) {
       return new ast.Bop('=', new ast.Var(node.name), node.val.apply(cmpl));
     }
-    return new ast.Nop();
+    return node;
   }
   else if(node instanceof ast.Uop) {
     switch(node.op) {
@@ -2395,6 +2395,9 @@ function preprocess(node) {
   function pp(node) {
     if(node instanceof ast.Fn) {
       var frame = {};
+      for(p of node.params) {
+        frame[p.name] = p.typ;
+      }
       node.body.apply((node) => {
         if(node instanceof ast.Decl) {
           frame[node.name] = lookupTyp(node.typ);
@@ -2453,7 +2456,15 @@ function Program(options) {
     }
   }
 
-  this.memory = {
+  this.stack = [{}];
+
+  this.heap = {
+
+  };
+
+  this.globals = {
+    'NULL': 0,
+    'nullptr': 0,
     '!print': new ast.Builtin((p) => {
       // console.log("Printing: ", p);
       this.onPrint(String(this.getVal(p)));
@@ -2461,7 +2472,7 @@ function Program(options) {
     }),
     '!malloc': new ast.Builtin((typ) => {
       var loc = this.generateHeapAddress(4);
-      this.memory[loc] = this.initMemory(typ);
+      this.heap[loc] = this.initMemory(typ);
       this.onDynamicAllocation(typ, loc);
       // console.log("Here:", loc)
       return new ast.Lit('ptr', loc);
@@ -2500,38 +2511,44 @@ function Program(options) {
   };
 
   this.getMemory = function(loc) {
-    if(loc instanceof ast.Var) {
-      return this.memory[loc.name];
-    }
-    else if (loc instanceof ast.Deref){
-      return this.memory[loc.e1.val];
-    }
-    else if (loc instanceof ast.IndexAccess){
+    if (loc instanceof ast.IndexAccess){
       return this.getMemory(loc.e1)[this.getVal(loc.index)];
     }
     else if (loc instanceof ast.MemberAccess){
       return this.getMemory(loc.e1)[loc.field];
     }
     else {
-      throw Error('Internal error: Location was not a var, deref, index, or member access.');
+      var currentStackFrame = this.stack[this.stack.length-1];
+      if(loc instanceof ast.Var) {
+        if(loc.name in currentStackFrame) {
+          return currentStackFrame[loc.name];
+        }
+        return this.globals[loc.name];
+      }
+      else {
+        return this.heap[loc.e1.val];
+      }
     }
   }
 
   this.setMemory = function(loc, val) {
-    if(loc instanceof ast.Var) {
-      this.memory[loc.name] = val;
-    }
-    else if (loc instanceof ast.Deref){
-      this.memory[loc.e1.val] = val;
-    }
-    else if (loc instanceof ast.IndexAccess){
+    if (loc instanceof ast.IndexAccess){
       this.getMemory(loc.e1)[this.getVal(loc.index)] = val;
     }
     else if (loc instanceof ast.MemberAccess){
       this.getMemory(loc.e1)[loc.field] = val;
     }
     else {
-      throw Error('Internal error: Location was not a var, deref, index, or member access.');
+      var currentStackFrame = this.stack[this.stack.length-1];
+      if(loc instanceof ast.Var) {
+        if(loc.name in currentStackFrame) {
+          currentStackFrame[loc.name] = val;
+        }
+        this.globals[loc.name] = val;
+      }
+      else {
+        this.heap[loc.e1.val] = val;
+      }
     }
   }
 
@@ -2556,7 +2573,7 @@ function Program(options) {
 
   for(var decl of compiled_file.decls) {
     if(decl instanceof ast.Fn) {
-      this.memory[decl.name] = decl;
+      this.globals[decl.name] = decl;
     }
     else if(decl instanceof ast.ObjTmpl) {
       continue;
@@ -2601,9 +2618,9 @@ function Program(options) {
 
     else if(current instanceof ast.Scope) {
       return current.stmts.reduceRight((acc, h) => {
-        // console.log("h: ", h);
-        // console.log("acc: ", acc);
-        return this.stepgen(h, (_) => acc);
+        return this.stepgen(h, (_) => {
+          return acc;
+        });
       }, next);
     }
 
@@ -2618,6 +2635,10 @@ function Program(options) {
             throw Error('Unimplemented uop: ' + current.op);
         }
       });
+    }
+
+    else if(current instanceof ast.Decl) {
+      return next();
     }
 
     else if(current instanceof ast.Bop) {
@@ -2673,6 +2694,13 @@ function Program(options) {
       });
     }
 
+    else if(current instanceof ast.Return) {
+      return this.stepgen(current.e1, (v1) => {
+        var ret_val = new ast.Lit(undefined, this.getVal(v1));
+        return this.stack[this.stack.length - 1]['!retptr'](ret_val);
+      });
+    }
+
     else if(current instanceof ast.Call) {
       return this.stepgen(current.fn, (v1) => {
         v1 = this.getVal(v1);
@@ -2683,17 +2711,33 @@ function Program(options) {
           });
         }
         else {
-          console.assert(current.args.length == 0);
-          this.onFnCall(v1.name, v1.frame);
-          for(var v in v1.frame) {
-            this.setMemory(new ast.Var(v), this.initMemory(v1.frame[v]));
-          }
-          // console.log("MEMORY:")
-          // console.log(this.memory);
-          return (_) => this.stepgen(v1.body, (r) => {
+          var retptr = (r) => {
             this.onFnEnd(v1.name, r);
-            next(r);
-          })
+            this.stack.pop();
+            return next(r);
+          };
+          var newFrame = {
+            '!retptr': retptr,
+          };
+          return current.args.reduceRight((acc, h, i) => {
+            return this.stepgen(h, (v) => {
+              newFrame[v1.params[i].name] = this.getVal(v);
+              return acc;
+            });
+          }, () => {
+            this.position = v1.position;
+            this.onFnCall(v1.name, v1.frame);
+            for(var v in v1.frame) {
+              if(v in newFrame) {
+                  this.onAssign(new ast.Var(v), newFrame[v]);
+              }
+              else {
+                newFrame[v] = this.initMemory(v1.frame[v]);
+              }
+            }
+            this.stack.push(newFrame);
+            return this.stepgen(v1.body, retptr);
+          });
         }
       });
     }

@@ -16,6 +16,9 @@ function preprocess(node) {
   function pp(node) {
     if(node instanceof ast.Fn) {
       var frame = {};
+      for(p of node.params) {
+        frame[p.name] = p.typ;
+      }
       node.body.apply((node) => {
         if(node instanceof ast.Decl) {
           frame[node.name] = lookupTyp(node.typ);
