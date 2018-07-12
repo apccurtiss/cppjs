@@ -99,6 +99,7 @@ var group2 = parse.late(() => parse.choice(
     // parser returns a function that creates the AST node, allowing them to be
     // called in sequence, with the result of each one being passed to the next.
     bind_list(
+      parse.getPosition,
       group1,
       parse.many(ws(parse.choice(
         parse.bind(text.trie(['++', '--']), (op) => parse.always((e) =>
@@ -114,17 +115,17 @@ var group2 = parse.late(() => parse.choice(
           expr),
           (index) => parse.always((e) =>
             new ast.IndexAccess(e, index))),
-        parse.bind(lang.between(
+        bind_list(lang.between(
           ws(text.character('(')),
           ws(text.character(')')),
           // Group17 used here because commas are a valid operator in group18.
           parse.eager(lang.sepBy(ws(text.character(',')), group17))),
-          (args) => parse.always((e) =>
-            new ast.Call(e, args)))
-      ))),
-      (e, opfns) => {
+          parse.getPosition,
+          (args, endPos) => (e, startPos) =>
+            new ast.Call(e, args, { start: startPos, end: endPos }))))),
+      (startPos, e, opfns) => {
         return nu.foldl(
-        (acc, opfn) => opfn(acc),
+        (acc, opfn) => opfn(acc, startPos),
         e,
         opfns
       )

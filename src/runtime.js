@@ -182,8 +182,11 @@ function Program(options) {
     }
 
     else if(current instanceof ast.Scope) {
-      return current.stmts.reduceRight((acc, h) => {
+      return current.stmts.reduceRight((acc, h, i) => {
         return this.stepgen(h, (_) => {
+          if(i == current.stmts.length-1) {
+            return acc();
+          }
           return acc;
         });
       }, next);
@@ -289,19 +292,20 @@ function Program(options) {
               newFrame[v1.params[i].name] = this.getVal(v);
               return acc;
             });
-          }, () => {
-            this.position = v1.position;
+          }, (_) => {
+            console.log(current)
+            this.position = current.position;
             this.onFnCall(v1.name, v1.frame);
             for(var v in v1.frame) {
               if(v in newFrame) {
-                  this.onAssign(new ast.Var(v), newFrame[v]);
+                this.onAssign(new ast.Var(v), newFrame[v]);
               }
               else {
                 newFrame[v] = this.initMemory(v1.frame[v]);
               }
             }
             this.stack.push(newFrame);
-            return this.stepgen(v1.body, retptr);
+            return this.stepgen(v1.body, (_) => retptr(new ast.Lit()));
           });
         }
       });
@@ -330,7 +334,7 @@ function Program(options) {
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
     this.position = undefined;
     return null;
-  })();
+  });
 
   this.step = function() {
     if(stepper != null) {

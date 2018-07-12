@@ -11,6 +11,7 @@ test('Get basic function output.', function(t) {
   });
 
   program.step();
+  program.step();
   t.equal(output, '1');
   program.step();
   t.equal(output, '13');

@@ -24,7 +24,7 @@ var currentFrame = undefined;
 function onAssign(v, val) {
   if(v instanceof runtime.ast.Var) {
     console.log(v)
-    currentFrame.vars[v.name].find('.function-var-value')[0].innerHTML = val;
+    currentFrame.vars[v.name].find('.function-var-value').html(val);
   }
   else {
     heap.updateNode(v, val);
@@ -32,26 +32,41 @@ function onAssign(v, val) {
 }
 
 function onFnCall(name, frame) {
-  var newFrame = $('#function-frame-template').clone().css( 'display', '' ).appendTo('#stack');
+  var newFrame = $('#function-frame-template').clone().css( 'display', '' );
+  newFrame.removeAttr('id');
+  $('#stack').prepend(newFrame);
   newFrame.on('click', (e) => {
     e.target.classList.toggle('active');
+    e.target.classList.remove('untouched');
 
     var panel = e.target.nextElementSibling;
-    if (panel.style.display === 'block') {
-        panel.style.display = 'none';
+    if (panel.style.display == 'none') {
+      panel.style.display = 'block';
     } else {
-        panel.style.display = 'block';
+      panel.style.display = 'none';
     }
   });
 
-  newFrame.find('.function-name')[0].innerHTML = name;
+  var frameWalker = currentFrame;
+  while(frameWalker) {
+    var frame_button = frameWalker.dom.children(':first');
+    if(frame_button.hasClass('untouched') && frame_button.hasClass('active')) {
+      frame_button.click();
+    }
+    frameWalker = frameWalker.prev;
+  }
+
+  newFrame.find('.function-name').html(name);
   var vars = {};
   for(var v in frame) {
     var newVar = $('#function-var-template').clone().css( 'display', '' ).appendTo(newFrame.find('.function-vars'));
-    newVar.find('.function-var-name')[0].innerHTML = v;
-    newVar.find('.function-var-type')[0].innerHTML = frame[v].asString();
-    newVar.find('.function-var-value')[0].innerHTML = 'unset';
+    newVar.find('.function-var-name').html(v);
+    newVar.find('.function-var-type').html(frame[v].asString());
+    newVar.find('.function-var-value').html('unset');
     vars[v] = newVar;
+  }
+  if(Object.keys(frame).length == 0) {
+    var emptyIndicator = $(document.createTextNode('No function variables')).appendTo(newFrame.find('.function-vars'));
   }
 
   currentFrame = {

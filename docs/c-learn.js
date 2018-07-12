@@ -1956,11 +1956,14 @@ module.exports = {
     this.apply = function(f){ return f(this); }
   },
 
-  Call: function(fn, args) {
+  Call: function(fn, args, position) {
     this.fn = fn;
     this.args = args;
+    // Call is the one AST node that stores it's position, because it's
+    // position is set during the function call step.
+    this.position = position;
 
-    this.apply = function(f){ return f(new module.exports.Call(f(fn), this.args.map((x) => x.apply(f)))); }
+    this.apply = function(f){ return f(new module.exports.Call(f(fn), this.args.map((x) => x.apply(f)), this.position)); }
   },
 
   Return: function(e1) {
@@ -2176,6 +2179,7 @@ var group2 = parse.late(() => parse.choice(
     // parser returns a function that creates the AST node, allowing them to be
     // called in sequence, with the result of each one being passed to the next.
     bind_list(
+      parse.getPosition,
       group1,
       parse.many(ws(parse.choice(
         parse.bind(text.trie(['++', '--']), (op) => parse.always((e) =>
@@ -2191,17 +2195,17 @@ var group2 = parse.late(() => parse.choice(
           expr),
           (index) => parse.always((e) =>
             new ast.IndexAccess(e, index))),
-        parse.bind(lang.between(
+        bind_list(lang.between(
           ws(text.character('(')),
           ws(text.character(')')),
           // Group17 used here because commas are a valid operator in group18.
           parse.eager(lang.sepBy(ws(text.character(',')), group17))),
-          (args) => parse.always((e) =>
-            new ast.Call(e, args)))
-      ))),
-      (e, opfns) => {
+          parse.getPosition,
+          (args, endPos) => (e, startPos) =>
+            new ast.Call(e, args, { start: startPos, end: endPos }))))),
+      (startPos, e, opfns) => {
         return nu.foldl(
-        (acc, opfn) => opfn(acc),
+        (acc, opfn) => opfn(acc, startPos),
         e,
         opfns
       )
@@ -2617,8 +2621,11 @@ function Program(options) {
     }
 
     else if(current instanceof ast.Scope) {
-      return current.stmts.reduceRight((acc, h) => {
+      return current.stmts.reduceRight((acc, h, i) => {
         return this.stepgen(h, (_) => {
+          if(i == current.stmts.length-1) {
+            return acc();
+          }
           return acc;
         });
       }, next);
@@ -2724,19 +2731,20 @@ function Program(options) {
               newFrame[v1.params[i].name] = this.getVal(v);
               return acc;
             });
-          }, () => {
-            this.position = v1.position;
+          }, (_) => {
+            console.log(current)
+            this.position = current.position;
             this.onFnCall(v1.name, v1.frame);
             for(var v in v1.frame) {
               if(v in newFrame) {
-                  this.onAssign(new ast.Var(v), newFrame[v]);
+                this.onAssign(new ast.Var(v), newFrame[v]);
               }
               else {
                 newFrame[v] = this.initMemory(v1.frame[v]);
               }
             }
             this.stack.push(newFrame);
-            return this.stepgen(v1.body, retptr);
+            return this.stepgen(v1.body, (_) => retptr(new ast.Lit()));
           });
         }
       });
@@ -2765,7 +2773,7 @@ function Program(options) {
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
     this.position = undefined;
     return null;
-  })();
+  });
 
   this.step = function() {
     if(stepper != null) {

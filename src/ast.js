@@ -140,11 +140,14 @@ module.exports = {
     this.apply = function(f){ return f(this); }
   },
 
-  Call: function(fn, args) {
+  Call: function(fn, args, position) {
     this.fn = fn;
     this.args = args;
+    // Call is the one AST node that stores it's position, because it's
+    // position is set during the function call step.
+    this.position = position;
 
-    this.apply = function(f){ return f(new module.exports.Call(f(fn), this.args.map((x) => x.apply(f)))); }
+    this.apply = function(f){ return f(new module.exports.Call(f(fn), this.args.map((x) => x.apply(f)), this.position)); }
   },
 
   Return: function(e1) {
