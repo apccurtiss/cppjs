@@ -2,7 +2,7 @@ var runtime = require('../src/runtime.js');
 var test = require('tape');
 
 test('Get basic function output.', function(t) {
-  t.plan(5);
+  t.plan(11);
 
   var output = '';
   var program = new runtime.Program({
@@ -10,16 +10,16 @@ test('Get basic function output.', function(t) {
     code: `int main ( ) { cout << 1; cout << 1 + 2; cout << 1 + 2 + 3; }`
   });
 
-  program.step();
-  program.step();
+  t.doesNotThrow(program.step);
+  t.doesNotThrow(program.step);
   t.equal(output, '1');
-  program.step();
+  t.doesNotThrow(program.step);
   t.equal(output, '13');
-  program.step();
+  t.doesNotThrow(program.step);
   t.equal(output, '136');
-  program.step();
+  t.doesNotThrow(program.step);
   t.equal(output, '136');
-  program.step();
+  t.doesNotThrow(program.step);
   t.equal(output, '136');
 
   t.end();
@@ -61,7 +61,7 @@ test('Array of structs.', function(t) {
 });
 
 test('Basic dynamic memory.', function(t) {
-  t.plan(2);
+  t.plan(3);
 
   var output = '';
   var dynamicAllocations = 0;
@@ -71,13 +71,13 @@ test('Basic dynamic memory.', function(t) {
     code: `int main ( ) { int *y = new int; *y = 7; cout << *y; }`
   });
 
-  program.run();
+  t.doesNotThrow(program.run);
   t.equal(dynamicAllocations, 1);
   t.equal(output, '7');
 });
 
 test('Basic linked list.', function(t) {
-  t.plan(2);
+  t.plan(3);
 
   var output = '';
   var dynamicAllocations = 0;
@@ -105,13 +105,13 @@ test('Basic linked list.', function(t) {
     }`
   });
 
-  program.run();
+  t.doesNotThrow(program.run);
   t.equal(output, '12');
   t.equal(dynamicAllocations, 2);
 });
 
 test('Calling functions.', function(t) {
-  t.plan(1);
+  t.plan(2);
 
   var output = '';
   var program = new runtime.Program({
@@ -132,7 +132,7 @@ test('Calling functions.', function(t) {
     }`
   });
 
-  program.run();
+  t.doesNotThrow(program.run);
   t.equal(output, '1006');
 });
 // test('setting and loading values from memory', function(t) {

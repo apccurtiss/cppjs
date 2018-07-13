@@ -121,6 +121,9 @@ function Program(options) {
     if(leaf instanceof ast.Var || leaf instanceof ast.Deref) {
       return this.getMemory(leaf);
     }
+    else if(leaf instanceof ast.IndexAccess) {
+      return this.getMemory(leaf.e1)[this.getVal(leaf.index)];
+    }
     else if(leaf instanceof ast.MemberAccess) {
       return this.getMemory(leaf.e1)[leaf.field];
     }
@@ -181,10 +184,10 @@ function Program(options) {
       return next(new ast.TypObj(current.name, fields));
     }
 
-    else if(current instanceof ast.Scope) {
-      return current.stmts.reduceRight((acc, h, i) => {
+    else if(current instanceof ast.Seq) {
+      return current.elems.reduceRight((acc, h, i) => {
         return this.stepgen(h, (_) => {
-          if(i == current.stmts.length-1) {
+          if(i == current.elems.length-1) {
             return acc();
           }
           return acc;
@@ -206,6 +209,7 @@ function Program(options) {
     }
 
     else if(current instanceof ast.Decl) {
+      // console.log("On:", current)
       return next();
     }
 
@@ -293,7 +297,7 @@ function Program(options) {
               return acc;
             });
           }, (_) => {
-            console.log(current)
+            // console.log(current)
             this.position = current.position;
             this.onFnCall(v1.name, v1.frame);
             for(var v in v1.frame) {

@@ -52,6 +52,13 @@ module.exports = {
     };
   },
 
+  TypFn: function(ret, params) {
+    this.ret = ret;
+    this.params = params;
+
+    this.apply = function(f){ return f(new module.exports.TypFn(this.ret.apply(f), this.params.map((p) => p.apply(f)))); };
+  },
+
   // AST nodes
 
   Lit: function(typ, val) {
@@ -67,12 +74,12 @@ module.exports = {
     this.apply = function(f){ return f(this); }
   },
 
-  Decl: function(typ, name, val) {
+  Decl: function(typ, name, init) {
     this.typ = typ;
     this.name = name;
-    this.val = val;
+    this.init = init;
 
-    this.apply = function(f){ return f(new module.exports.Decl(this.typ.apply(f), this.name, this.val ? this.val.apply(f) : this.val)); }
+    this.apply = function(f){ return f(new module.exports.Decl(this.typ.apply(f), this.name, this.init ? this.init.apply(f) : this.init )); }
   },
 
   Uop: function(op, e1) {
@@ -170,10 +177,16 @@ module.exports = {
     this.apply = function(f){ return f(new module.exports.If(this.cond.apply(f), this.body.apply(f))); }
   },
 
-  Scope: function(stmts) {
-    this.stmts = stmts;
+  Scope: function(body) {
+    this.body = body;
 
-    this.apply = function(f){ return f(new module.exports.Scope(this.stmts.map((x) => x.apply(f)))); }
+    this.apply = function(f){ return f(new module.exports.Scope(this.body.map((x) => x.apply(f)))); }
+  },
+
+  Seq: function(elems) {
+    this.elems = elems;
+
+    this.apply = function(f){ return f(new module.exports.Seq(this.elems.map((x) => x.apply(f)))); }
   },
 
   CFile: function(decls) {

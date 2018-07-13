@@ -44,7 +44,7 @@ test('Basic function declarations', function(t) {
 });
 
 test('Variable definitions', function(t) {
-  t.plan(8);
+  t.plan(10);
 
   t.doesNotThrow(() => compiler.compileStmt(` int x ; `));
   t.doesNotThrow(() => compiler.compileStmt(` int x = 1 + 2 / 3 ; `));
@@ -54,6 +54,8 @@ test('Variable definitions', function(t) {
   t.doesNotThrow(() => compiler.compileStmt(` int x [ 10 ] ; `));
   t.doesNotThrow(() => compiler.compileStmt(` int x [ 10 * 40 ] ; `));
   t.doesNotThrow(() => compiler.compileStmt(` int x [ 10 ] [ 50 ] ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int * x , * y [ 10 ] ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` int * x , * y [ 10 ] , z ; `));
 
   t.end();
 });
@@ -68,6 +70,19 @@ test('Syntactially complex expressions', function(t) {
   t.doesNotThrow(() => compiler.compileExpr(`(*a).next`));
   t.doesNotThrow(() => compiler.compileExpr(`a.next[10]`));
   t.doesNotThrow(() => compiler.compileExpr(`a.next[10].ptr->val`));
+
+  t.end();
+});
+
+test('Classes and structs', function(t) {
+  t.plan(1);
+
+  t.doesNotThrow(() => compiler.compileFile(`
+    struct Node {
+      int key ;
+      Node * left , right ;
+    } ;
+  `));
 
   t.end();
 });

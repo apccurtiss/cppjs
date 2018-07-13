@@ -36,12 +36,7 @@ var ident = ws(parse.bind(parse.cons(
     chars
   ))));
 
-var typ = bind_list(
-  ident,
-  parse.eager(parse.many(ws(text.character('*')))),
-  (typ, ptrs) => ptrs.reduce((acc, _) => {
-    return new ast.TypPtr(acc)
-  }, new ast.TypName(typ)));
+var typ = parse.bind(ident, (t) => parse.always(new ast.TypName(t)));
 
 var var_name = ident;
 
@@ -149,30 +144,39 @@ var group16 = bopsr(text.trie(['=', '*=', '/=', '+=', '-=']), group15);
 var group17 = group16; // TODO(alex) throw
 var group18 = bopsl(text.character(','), group17);
 
-var var_decl = bind_list(
-  typ,
+var declarator = (baseParser) => bind_list(
+  baseParser,
+  parse.many(ws(text.character('*'))),
   ws(var_name),
   parse.many(lang.between(
     ws(text.character('[')),
     ws(text.character(']')),
     expr)),
-  (typ, name, arrs) => new ast.Decl(
+  (base, ptrs, name, arrs) => new ast.Decl(nu.foldl(
+    (acc, h) => new ast.TypArr(acc, h),
     nu.foldl(
-      (acc, h) => new ast.TypArr(acc, h),
-      typ,
-      arrs), name));
+      (acc, _) => new ast.TypPtr(acc),
+      base,
+      ptrs),
+    arrs), name));
 
-var var_def = bind_list(
-  var_decl,
-  parse.optional(undefined, parse.next(
-    ws(text.character('=')),
-    expr)),
-  (decl, assign) => {
-    if(assign) {
-      decl.val = assign;
-    }
-    return decl;
-  });
+var var_decls = parse.bind(typ, (t) => parse.bind(
+  // parse.always([]),
+  parse.eager(lang.sepBy1(ws(text.character(',')),
+    bind_list(
+      declarator(parse.always(t)),
+      parse.optional(undefined, parse.next(
+        // Group 17 used because ',' is a valid operator at group 18
+        ws(text.character('=')),
+        group17)),
+      (decl, assign) => {
+        if(assign) {
+          decl.init = assign;
+        }
+        return decl;
+      }
+    ))),
+    (decls) => parse.always(new ast.Seq(decls))));
 
 var while_loop = parse.late(() =>
   bind_list(
@@ -191,7 +195,7 @@ var for_loop = parse.late(() =>
     text.string('for'),
     parse.next(
       ws(text.character('(')),
-      step_point(parse.either(parse.attempt(var_def), expr))),
+      step_point(parse.either(parse.attempt(var_decls), expr))),
     lang.between(
       ws(semi),
       ws(semi),
@@ -203,7 +207,7 @@ var for_loop = parse.late(() =>
     (_, init, cond, inc, body) => {
       return new ast.Scope([
         init,
-        new ast.Loop(cond, new ast.Scope([
+        new ast.Loop(cond, new ast.Seq([
           body,
           inc,
         ])),
@@ -224,7 +228,7 @@ var stmt = ws(parse.choice(
     semi,
     ws(expr)),
     (e) => parse.always(new ast.Return(e)))),
-  step_point(parse.attempt(lang.then(var_def, semi))),
+  step_point(parse.attempt(lang.then(var_decls, semi))),
   step_point(lang.then(expr, semi)),
   step_point(parse.next(semi, parse.always(new ast.Nop())))));
 
@@ -234,7 +238,7 @@ var params = lang.between(
   text.character('('),
   text.character(')'),
   parse.eager(
-    ws(lang.sepBy(ws(text.character(',')), var_decl))));
+    ws(lang.sepBy(ws(text.character(',')), declarator(typ)))));
 
 var fn_def = bind_list(
   typ, ws(ident), ws(params), ws(scope),
@@ -248,17 +252,21 @@ var obj_tmpl = bind_list(
     text.character('}'),
     ws(parse.eager(parse.many(ws(parse.either(
       lang.then(text.trie(['public', 'private']), ws(':')),
-      lang.then(var_decl, ws(semi))
+      lang.then(var_decls, ws(semi))
     )))))),
-  (type, name, body) => {
+  (type, name, decls) => {
     var publ = type == 'struct';
     var publ = [];
     var priv = [];
-    for(var e of body) {
-      if(e == 'public') publ = true;
-      else if(e == 'private') publ = false;
-      else if (publ) publ.push(e);
-      else priv.push(e);
+    for(var decl of decls) {
+      if(decl == 'public') publ = true;
+      else if(decl == 'private') publ = false;
+      else {
+        for(var v of decl.elems) {
+          if (publ) publ.push(v);
+          else priv.push(v);
+        }
+      }
     }
     return new ast.ObjTmpl(name, publ, priv);
   });
@@ -275,23 +283,6 @@ var parseFile = (s) => parse.run(file, s)
 var parseFn = (s) => parse.run(fn_def, s)
 var parseExpr = (s) => parse.run(expr, s)
 var parseStmt = (s) => parse.run(stmt, s)
-
-// parseFile(');
-// console.log(parse.run(ident, 's'))
-// console.log(parse.run(ident, 'asdf'))
-// console.log(parse.run(ident, '_A1'))
-// console.log(parse.run(ident, '_A64Hsfb'))
-// parse.run(
-//   bind_list(text.character('a'), (a) => (parse.always(a))
-//   ),
-//   'asdf')
-// parse.run(
-//   parse.choice(
-//     parse.attempt(lang.then(text.character('a'), text.character('c'))),
-//     parse.attempt(lang.then(text.character('a'), text.character('b')))
-//   ),
-//   'abc')
-// console.log(parseFile('struct node { int key; }; int main () { node asdf; }'))
 
 module.exports = {
   parseFile: parseFile,
