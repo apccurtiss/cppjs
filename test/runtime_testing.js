@@ -1,13 +1,18 @@
 var runtime = require('../src/runtime.js');
 var test = require('tape');
 
-test('Get basic function output.', function(t) {
+test('Step through basic function.', function(t) {
   t.plan(11);
 
   var output = '';
   var program = new runtime.Program({
     onPrint: (text) => { output += text; },
-    code: `int main ( ) { cout << 1; cout << 1 + 2; cout << 1 + 2 + 3; }`
+    code: `
+    int main ( ) {
+      cout << 1;
+      cout << 1 + 2;
+      cout << 1 + 2 + 3;
+    }`
   });
 
   t.doesNotThrow(program.step);
@@ -21,6 +26,34 @@ test('Get basic function output.', function(t) {
   t.equal(output, '136');
   t.doesNotThrow(program.step);
   t.equal(output, '136');
+
+  t.end();
+});
+
+test('Perform complex prints.', function(t) {
+  t.plan(5);
+
+  var output = '';
+  var program = new runtime.Program({
+    onPrint: (text) => { output += text; },
+    code: `
+    int main ( ) {
+      cout << 1 ;
+      cout << "Hello" ;
+      cout << 1 << endl ;
+      cout << 1 << 2 << "Hello" << endl ;
+    }`
+  });
+
+  t.doesNotThrow(program.step);
+  t.doesNotThrow(program.step);
+  t.equals(output, `1`)
+  t.doesNotThrow(program.step);
+  t.equals(output, `1Hello`)
+  // t.doesNotThrow(program.step);
+  // t.equals(output, `1Hello1\n`)
+  // t.doesNotThrow(program.step);
+  // t.equals(output, `1Hello1\n12Hello\n`)
 
   t.end();
 });

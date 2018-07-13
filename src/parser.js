@@ -19,6 +19,13 @@ var bind_list = (...args) => {
     (results) => parse.always(f.apply(null, results)));
 }
 
+var nu_stream_as_string = (p) => parse.bind(p,
+  (ps) => parse.always(nu.reduce(
+    (h, acc) => h + acc,
+    ps)));
+
+var consume_all = (p) => lang.then(p, parse.eof);
+
 var step_point = (p) => {
   return bind_list(
     parse.getPosition, p, parse.getPosition,
@@ -28,23 +35,29 @@ var step_point = (p) => {
 var semi = parse.expected('semicolon', text.character(';'))
 
 var letter_or_under = parse.either(text.letter, text.character('_'))
-var ident = ws(parse.bind(parse.cons(
-  letter_or_under, parse.many(parse.either(letter_or_under, text.digit))),
-  (chars) => parse.always(nu.foldl(
-    (acc, c) => acc + c,
-    '',
-    chars
-  ))));
+var ident = ws(parse.bind(
+  nu_stream_as_string(parse.cons(
+  letter_or_under, parse.many(parse.either(letter_or_under, text.digit)))),
+  (id) => parse.always(id)));
 
 var typ = parse.bind(ident, (t) => parse.always(new ast.TypName(t)));
 
 var var_name = ident;
 
-var number = parse.bind(
-  parse.many1(text.digit),
-  (ds) => parse.always(new ast.Lit('int', Number(nu.reduce(
-    (d, acc) => d + acc,
-    ds)))));
+var integer_lit = parse.bind(
+  nu_stream_as_string(parse.many1(text.digit)),
+  (n) => parse.always(new ast.Lit(new ast.TypBase('int'), Number(n))));
+
+var string_lit = parse.bind(
+  lang.between(
+    text.character('"'),
+    text.character('"'),
+    nu_stream_as_string(parse.many(text.noneOf('"')))),
+  (str) => parse.always(new ast.Lit(new ast.TypPtr(new ast.TypBase('char')), str)));
+
+var literal = parse.choice(
+  integer_lit,
+  string_lit);
 
 var prefxs = (ops, next) => parse.bind(
   parse.many(ws(ops)),
@@ -81,7 +94,7 @@ var ternary = (next) => lang.chainr1(
 // https://msdn.microsoft.com/en-us/library/126fe14k.aspx
 var expr = parse.late(() => group18);
 var group0 = ws(parse.choice(
-    number,
+    literal,
     parse.bind(ident, (n) => parse.always(new ast.Var(n))),
     lang.between(text.character('('),
                  text.character(')'),
@@ -284,18 +297,17 @@ var obj_tmpl = bind_list(
     return new ast.ObjTmpl(name, publ, priv);
   });
 
-var file = parse.bind(lang.then(
+var file = parse.bind(
     parse.eager(parse.many(
       ws(parse.choice(
         lang.then(obj_tmpl, ws(semi)),
         fn_def)))),
-    parse.eof),
     (body) => parse.always(new ast.CFile(body)));
 
-var parseFile = (s) => parse.run(file, s)
-var parseFn = (s) => parse.run(fn_def, s)
-var parseExpr = (s) => parse.run(expr, s)
-var parseStmt = (s) => parse.run(stmt, s)
+var parseFile = (s) => parse.run(consume_all(file), s)
+var parseFn = (s) => parse.run(consume_all(fn_def), s)
+var parseExpr = (s) => parse.run(consume_all(expr), s)
+var parseStmt = (s) => parse.run(consume_all(stmt), s)
 
 module.exports = {
   parseFile: parseFile,

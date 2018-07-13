@@ -27,7 +27,17 @@ test('Basic statements', function(t) {
   t.doesNotThrow(() => compiler.compileStmt(` if ( 1 + 2 ) { 1 + 2 ; } else { 3 + 4 ; } `));
   t.doesNotThrow(() => compiler.compileStmt(` while ( 1 + 2 ) { 1 + 2 ; } `));
   t.doesNotThrow(() => compiler.compileStmt(` for ( int i = 0 ; i < 10 ; i ++ ) { } `));
-  t.doesNotThrow(() => compiler.compileStmt(` ; ; ; `));
+  t.doesNotThrow(() => compiler.compileStmt(` ; `));
+
+  t.end();
+});
+
+test('Strings', function(t) {
+  t.plan(3);
+
+  t.doesNotThrow(() => compiler.compileExpr(`"asdf"`));
+  t.doesNotThrow(() => compiler.compileExpr(`" this is a string "`));
+  t.throws(() => compiler.compileExpr(`" " "`));
 
   t.end();
 });

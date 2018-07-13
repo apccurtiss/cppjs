@@ -30,6 +30,7 @@ function Program(options) {
   this.globals = {
     'NULL': 0,
     'nullptr': 0,
+    'endl': '\n',
     '!print': new ast.Builtin((p) => {
       // console.log("Printing: ", p);
       this.onPrint(String(this.getVal(p)));
