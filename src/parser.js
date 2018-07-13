@@ -180,36 +180,33 @@ var var_decls = parse.bind(typ, (t) => parse.bind(
 
 var if_stmt = parse.late(() =>
   bind_list(
-    text.string('if'),
     ws(lang.between(
-      text.character('('),
+      parse.next(text.string('if'), ws(text.character('('))),
       text.character(')'),
       ws(step_point(expr)))),
     ws(stmt),
     parse.optional(undefined,
       parse.next(text.string('else'),
       ws(stmt))),
-    (_, cond, body, orelse) => {
+    (cond, body, orelse) => {
       return new ast.If(cond, body, orelse)
     }));
 
 var while_loop = parse.late(() =>
   bind_list(
-    text.string('while'),
     ws(lang.between(
-      text.character('('),
+      parse.next(text.string('while'), ws(text.character('('))),
       text.character(')'),
       ws(step_point(expr)))),
     ws(stmt),
-    (_, cond, body) => {
+    (cond, body) => {
       return new ast.Loop(cond, body)
     }));
 
 var for_loop = parse.late(() =>
   bind_list(
-    text.string('for'),
     parse.next(
-      ws(text.character('(')),
+      parse.next(text.string('for'), ws(text.character('('))),
       step_point(parse.either(parse.attempt(var_decls), expr))),
     lang.between(
       ws(semi),
@@ -219,20 +216,20 @@ var for_loop = parse.late(() =>
       step_point(expr),
       ws(text.character(')'))),
     ws(stmt),
-    (_, init, cond, inc, body) => {
-      return new ast.Scope([
+    (init, cond, inc, body) => {
+      return new ast.Scope(new ast.Seq([
         init,
         new ast.Loop(cond, new ast.Seq([
           body,
           inc,
         ])),
-      ]);
+      ]));
     }));
 
 var scope = parse.late(() => lang.between(
     text.character('{'),
     text.character('}'),
-    parse.bind(ws(stmts), s => parse.always(new ast.Scope(s)))))
+    parse.bind(ws(stmts), s => parse.always(new ast.Scope(new ast.Seq(s))))))
 
 var stmt = ws(parse.choice(
   if_stmt,

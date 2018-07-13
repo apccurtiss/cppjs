@@ -185,14 +185,11 @@ function Program(options) {
     }
 
     else if(current instanceof ast.Seq) {
-      return current.elems.reduceRight((acc, h, i) => {
+      return current.elems.slice(0,-1).reduceRight((acc, h, i) => {
         return this.stepgen(h, (_) => {
-          if(i == current.elems.length-1) {
-            return acc();
-          }
           return acc;
         });
-      }, next);
+      }, this.stepgen(current.elems[current.elems.length-1], next));
     }
 
     else if(current instanceof ast.Uop) {
@@ -209,8 +206,7 @@ function Program(options) {
     }
 
     else if(current instanceof ast.Decl) {
-      // console.log("On:", current)
-      return next();
+      return next(undefined);
     }
 
     else if(current instanceof ast.Bop) {
@@ -329,10 +325,10 @@ function Program(options) {
     else if(current instanceof ast.Loop) {
       return this.stepgen(current.cond, (r) => {
         if(this.getVal(r)) {
-          return this.stepgen(current.body, this.stepgen(current, next));
+          return this.stepgen(current.body, (_) => this.stepgen(current, next));
         }
         else {
-          return next();
+          return next(undefined);
         }
       });
     }
@@ -340,13 +336,13 @@ function Program(options) {
     else if(current instanceof ast.If) {
       return this.stepgen(current.cond, (r) => {
         if(this.getVal(r)) {
-          return this.stepgen(current.body, next);
+          return this.stepgen(current.body, (_) => next);
         }
         else if (current.orelse) {
-          return this.stepgen(current.orelse, next);
+          return this.stepgen(current.orelse, (_) => next);
         }
         else {
-          return next();
+          return next(undefined);
         }
       });
     }

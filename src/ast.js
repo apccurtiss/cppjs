@@ -181,7 +181,7 @@ module.exports = {
   Scope: function(body) {
     this.body = body;
 
-    this.apply = function(f){ return f(new module.exports.Scope(this.body.map((x) => x.apply(f)))); }
+    this.apply = function(f){ return f(new module.exports.Scope(this.body.apply(f))); }
   },
 
   Seq: function(elems) {

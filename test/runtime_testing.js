@@ -72,6 +72,50 @@ test('Test control flow.', function(t) {
   t.end();
 });
 
+test('Test stepping through statements.', function(t) {
+  t.plan(30);
+
+  var output = '';
+  var assigns = 0;
+  var program = new runtime.Program({
+    onPrint: (text) => { output += text; },
+    onAssign: (text) => { assigns++; },
+    code: `
+    int main ( ) {
+      for(int i = 1; i <= 2; i++) {
+        cout << i;
+      }
+      {
+        cout << 3;
+        cout << 4;
+      }
+      cout << 5;
+      if(1 < 2) {
+        cout << 6;
+        cout << 7;
+      }
+    }`
+  });
+
+  t.doesNotThrow(program.step); t.equal(output, '');
+  t.doesNotThrow(program.step); t.equal(assigns, 1);
+  t.doesNotThrow(program.step); t.equal(output, '');
+  t.doesNotThrow(program.step); t.equal(output, '1');
+  t.doesNotThrow(program.step); t.equal(assigns, 2);
+  t.doesNotThrow(program.step); t.equal(output, '1');
+  t.doesNotThrow(program.step); t.equal(output, '12');
+  t.doesNotThrow(program.step); t.equal(assigns, 3);
+  t.doesNotThrow(program.step); t.equal(output, '12');
+  t.doesNotThrow(program.step); t.equal(output, '123');
+  t.doesNotThrow(program.step); t.equal(output, '1234');
+  t.doesNotThrow(program.step); t.equal(output, '12345');
+  t.doesNotThrow(program.step); t.equal(output, '12345');
+  t.doesNotThrow(program.step); t.equal(output, '123456');
+  t.doesNotThrow(program.step); t.equal(output, '1234567');
+
+  t.end();
+});
+
 test('Array of structs.', function(t) {
   t.plan(7);
 

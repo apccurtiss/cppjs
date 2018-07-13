@@ -4,7 +4,23 @@ var pp = require('./preprocesser');
 
 function cmpl(node) {
   if(node instanceof ast.Scope) {
-    return new ast.Seq(node.body.map((b) => b.apply(cmpl)));
+    return node.body.apply(cmpl);
+  }
+  if(node instanceof ast.Seq) {
+    if(node.elems.length == 1) {
+      return node.elems[0].apply(cmpl);
+    }
+    var elems = [];
+    for(elem of node.elems) {
+      var compiled_elem = elem.apply(cmpl);
+      if(compiled_elem instanceof ast.Seq) {
+        elems = elems.concat(compiled_elem.elems);
+      }
+      else {
+        elems.push(compiled_elem);
+      }
+    }
+    return new ast.Seq(elems);
   }
   if(node instanceof ast.Decl) {
     if(node.init) {
