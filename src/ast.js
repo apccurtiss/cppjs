@@ -170,11 +170,12 @@ module.exports = {
     this.apply = function(f){ return f(new module.exports.Loop(this.cond.apply(f), this.body.apply(f))); }
   },
 
-  If: function(cond, body) {
+  If: function(cond, body, orelse) {
     this.cond = cond;
     this.body = body;
+    this.orelse = orelse;
 
-    this.apply = function(f){ return f(new module.exports.If(this.cond.apply(f), this.body.apply(f))); }
+    this.apply = function(f){ return f(new module.exports.If(this.cond.apply(f), this.body.apply(f), this.orelse ? this.orelse.apply(f) : this.orelse )); }
   },
 
   Scope: function(body) {

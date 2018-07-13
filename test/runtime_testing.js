@@ -25,6 +25,53 @@ test('Get basic function output.', function(t) {
   t.end();
 });
 
+// test('Test operator presidence.', function(t) {
+//   t.plan(2);
+//
+//   var output = '';
+//   var program = new runtime.Program({
+//     onPrint: (text) => { output += text; },
+//     code: `int main ( ) {
+//       cout << 12 ;
+//     }`
+//     // cout << ( 12 + 6 / 3 * 2 - 1 ) * 10 ;
+//   });
+//
+//   t.doesNotThrow(program.run);
+//   t.equal(output, '470');
+//
+//   t.end();
+// });
+
+test('Test control flow.', function(t) {
+  t.plan(2);
+
+  var output = '';
+  var program = new runtime.Program({
+    onPrint: (text) => { output += text; },
+    code: `
+    int main ( ) {
+      int i = 1;
+      while(i <= 3) {
+        for(int j = 1; j <= 3; j++) {
+          if(i % 2 == 0) {
+            cout << j;
+          }
+          else {
+            cout << 0;
+          }
+        }
+        i++;
+      }
+    }`
+  });
+
+  t.doesNotThrow(program.run);
+  t.equal(output, '000123000');
+
+  t.end();
+});
+
 test('Array of structs.', function(t) {
   t.plan(7);
 

@@ -178,6 +178,21 @@ var var_decls = parse.bind(typ, (t) => parse.bind(
     ))),
     (decls) => parse.always(new ast.Seq(decls))));
 
+var if_stmt = parse.late(() =>
+  bind_list(
+    text.string('if'),
+    ws(lang.between(
+      text.character('('),
+      text.character(')'),
+      ws(step_point(expr)))),
+    ws(stmt),
+    parse.optional(undefined,
+      parse.next(text.string('else'),
+      ws(stmt))),
+    (_, cond, body, orelse) => {
+      return new ast.If(cond, body, orelse)
+    }));
+
 var while_loop = parse.late(() =>
   bind_list(
     text.string('while'),
@@ -220,6 +235,7 @@ var scope = parse.late(() => lang.between(
     parse.bind(ws(stmts), s => parse.always(new ast.Scope(s)))))
 
 var stmt = ws(parse.choice(
+  if_stmt,
   while_loop,
   for_loop,
   scope,

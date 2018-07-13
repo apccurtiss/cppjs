@@ -228,7 +228,11 @@ function Program(options) {
             case '*':
               return next(new ast.Lit('int', this.getVal(v1) * this.getVal(v2)));
             case '/':
-              return next(new ast.Lit('int', this.getVal(v1) / this.getVal(v2)));
+              return next(new ast.Lit('int', Math.floor(this.getVal(v1) / this.getVal(v2))));
+            case '%':
+              return next(new ast.Lit('int', this.getVal(v1) % this.getVal(v2)));
+            case '==':
+              return next(new ast.Lit('bool', this.getVal(v1) == this.getVal(v2)));
             case '!=':
               return next(new ast.Lit('bool', this.getVal(v1) != this.getVal(v2)));
             case '<':
@@ -326,6 +330,20 @@ function Program(options) {
       return this.stepgen(current.cond, (r) => {
         if(this.getVal(r)) {
           return this.stepgen(current.body, this.stepgen(current, next));
+        }
+        else {
+          return next();
+        }
+      });
+    }
+
+    else if(current instanceof ast.If) {
+      return this.stepgen(current.cond, (r) => {
+        if(this.getVal(r)) {
+          return this.stepgen(current.body, next);
+        }
+        else if (current.orelse) {
+          return this.stepgen(current.orelse, next);
         }
         else {
           return next();

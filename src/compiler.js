@@ -3,9 +3,12 @@ var parser = require('./parser');
 var pp = require('./preprocesser');
 
 function cmpl(node) {
+  if(node instanceof ast.Scope) {
+    return new ast.Seq(node.body.map((b) => b.apply(cmpl)));
+  }
   if(node instanceof ast.Decl) {
-    if(node.val) {
-      return new ast.Bop('=', new ast.Var(node.name), node.val.apply(cmpl));
+    if(node.init) {
+      return new ast.Bop('=', new ast.Var(node.name), node.init.apply(cmpl));
     }
     return node;
   }
