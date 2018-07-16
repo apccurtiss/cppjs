@@ -1,38 +1,26 @@
 "use strict";
 
 var ast = require('./ast');
-var compiler = require('./compiler');
+// var compiler = require('./compiler');
 
-function Program(options) {
-  this.code = options.code;
+function Program(compiled_code, options) {
   this.onPrint = options.onPrint || ((text) => {});
   this.onFnCall = options.onFnCall || ((name, vars) => {});
   this.onFnEnd = options.onFnEnd || ((name, ret) => {});
   this.onDynamicAllocation = options.onDynamicAllocation || ((type, loc) => {});
   this.onAssign = options.onAssign || ((name, val) => {});
   this.errorFormat = options.errorFormat || 'cjs';
-
-  let i = 10000;
-  this.generateHeapAddress = function(size) {
-    for (;;) {
-      // console.log("I: ", i)
-      i += size;
-      return i-size;
-    }
-  }
+  this.types = compiled_code.types;
 
   this.stack = [{}];
 
-  this.heap = {
-
-  };
+  this.heap = {};
 
   this.globals = {
     'NULL': 0,
     'nullptr': 0,
     'endl': '\n',
     '!print': new ast.Builtin((p) => {
-      // console.log("Printing: ", p);
       this.onPrint(String(this.getVal(p)));
       return new ast.Var('!print');
     }),
@@ -40,10 +28,17 @@ function Program(options) {
       var loc = this.generateHeapAddress(4);
       this.heap[loc] = this.initMemory(typ);
       this.onDynamicAllocation(typ, loc);
-      // console.log("Here:", loc)
-      return new ast.Lit('ptr', loc);
+      return new ast.Lit(new ast.TypPtr(typ), loc);
     }),
   };
+
+  let i = 10000;
+  this.generateHeapAddress = function(size) {
+    for (;;) {
+      i += size;
+      return i-size;
+    }
+  }
 
   this.initMemory = function(typ) {
     if(typ instanceof ast.TypBase) {
@@ -67,9 +62,14 @@ function Program(options) {
     else if(typ instanceof ast.TypObj) {
       return Object.keys(typ.fields).reduce(
         (acc, h) => {
-          acc[h] = this.initMemory(typ.fields[h]);
+          if(!(typ.fields[h] instanceof ast.TypFn)) {
+            acc[h] = this.initMemory(typ.fields[h]);
+          }
           return acc;
         }, {});
+    }
+    else if(typ instanceof ast.TypName) {
+      return this.initMemory(this.types[typ.typ]);
     }
     else {
       throw Error('Unsupported type: ' + typ.constructor.name)
@@ -102,6 +102,10 @@ function Program(options) {
       this.getMemory(loc.e1)[this.getVal(loc.index)] = val;
     }
     else if (loc instanceof ast.MemberAccess){
+      console.log('loc', loc);
+      console.log('loc.e1', loc.e1);
+      console.log('this.stack', this.stack);
+      console.log('this.getMemory(loc.e1)', this.getMemory(loc.e1));
       this.getMemory(loc.e1)[loc.field] = val;
     }
     else {
@@ -136,27 +140,14 @@ function Program(options) {
     }
   }
 
-  var compiled_file = compiler.compileFile(options.code);
-  // console.log("Compiled file: ")
-  // console.log(JSON.stringify(compiled_file, null, 1));
-
-  for(var decl of compiled_file.decls) {
-    if(decl instanceof ast.Fn) {
-      this.globals[decl.name] = decl;
-    }
-    else if(decl instanceof ast.ObjTmpl) {
-      continue;
-    }
-    else {
-      throw Error('Unimplemented type: ' + '"' + decl.constructor.name + '"');
-    }
+  for(var fn of compiled_code.functions) {
+    this.globals[fn.name] = fn;
   }
 
   this.stepgen = function(current, next) {
     if(current instanceof ast.Builtin || current instanceof ast.TypBase ||
       current instanceof ast.Lit || current instanceof ast.Var
       || current instanceof ast.Nop) {
-      // console.log("On: ", current)
       return next(current);
     }
 
@@ -263,7 +254,7 @@ function Program(options) {
 
     else if(current instanceof ast.Deref) {
       return this.stepgen(current.e1, (v1) => {
-        return next(new ast.Deref(new ast.Lit('ptr', this.getVal(v1))));
+        return next(new ast.Deref(new ast.Lit(undefined, this.getVal(v1))));
       });
     }
 
@@ -298,7 +289,6 @@ function Program(options) {
               return acc;
             });
           }, (_) => {
-            // console.log(current)
             this.position = current.position;
             this.onFnCall(v1.name, v1.frame);
             for(var v in v1.frame) {

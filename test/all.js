@@ -1,2 +1,2 @@
-require("./compiler_testing.js");
+require("./parser_testing.js");
 require("./runtime_testing.js");

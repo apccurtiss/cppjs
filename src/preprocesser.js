@@ -1,52 +1,33 @@
+"use strict";
+
 var ast = require('./ast');
 
 function preprocess(node) {
-  var types = {
-    'char': new ast.TypBase('char'),
-    'bool': new ast.TypBase('bool'),
-    'int': new ast.TypBase('int'),
-    'float': new ast.TypBase('float'),
-  };
-
-  function lookupTyp(t) {
-    while(t instanceof ast.TypName) t = types[t.typ];
-    return t;
-  }
-
   function pp(node) {
     if(node instanceof ast.Fn) {
       var frame = {};
-      for(p of node.params) {
+      for(var p of node.params) {
         frame[p.name] = p.typ;
       }
-      node.body.apply((node) => {
+      function countVars(node) {
         if(node instanceof ast.Decl) {
-          frame[node.name] = lookupTyp(node.typ);
+          frame[node.name] = node.typ;
         }
-        return node;
-      });
-      return new ast.Fn(node.ret, node.name, node.params, node.body, frame);
-    }
-    else if(node instanceof ast.ObjTmpl) {
-      fields = {};
-      for(decl of node.publ.concat(node.priv)) {
-        fields[decl.name] = lookupTyp(decl.typ);
+        return node.apply(countVars);
       }
-      types[node.name] = new ast.TypObj(node.name, fields);
-    }
-    else if(node instanceof ast.TypName) {
-      return types[node.typ];
+      countVars(node.body);
+      return new ast.Fn(pp(node.ret), node.name, node.params, pp(node.body), frame);
     }
     else if(node instanceof ast.Uop) {
-      // TODO(alex): Move conversion to TypName to parsing step
+      // TODO(alex): Move conversion from Var to TypName into parsing step
       if(node.op == 'new') {
-        return new ast.Uop('new', lookupTyp(new ast.TypName(node.e1.name)));
+        return new ast.Uop('new', new ast.TypName(node.e1.name));
       }
     }
-    return node;
+    return node.apply(pp);
   }
 
-  return node.apply(pp);
+  return pp(node);
 }
 
 module.exports = {

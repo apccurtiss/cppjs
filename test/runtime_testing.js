@@ -1,19 +1,19 @@
-var runtime = require('../src/runtime.js');
+var compiler = require('../src/compiler.js');
 var test = require('tape');
 
-test('Step through basic function.', function(t) {
+test('Step through function.', function(t) {
   t.plan(11);
 
   var output = '';
-  var program = new runtime.Program({
-    onPrint: (text) => { output += text; },
-    code: `
+  var program = compiler.compile(`
     int main ( ) {
       cout << 1;
       cout << 1 + 2;
       cout << 1 + 2 + 3;
-    }`
-  });
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
 
   t.doesNotThrow(program.step);
   t.doesNotThrow(program.step);
@@ -34,22 +34,23 @@ test('Perform complex prints.', function(t) {
   t.plan(5);
 
   var output = '';
-  var program = new runtime.Program({
-    onPrint: (text) => { output += text; },
-    code: `
+  var program = compiler.compile(`
     int main ( ) {
       cout << 1 ;
       cout << "Hello" ;
       cout << 1 << endl ;
       cout << 1 << 2 << "Hello" << endl ;
-    }`
-  });
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
 
   t.doesNotThrow(program.step);
   t.doesNotThrow(program.step);
   t.equals(output, `1`)
   t.doesNotThrow(program.step);
   t.equals(output, `1Hello`)
+  // TODO(alex): Implement this
   // t.doesNotThrow(program.step);
   // t.equals(output, `1Hello1\n`)
   // t.doesNotThrow(program.step);
@@ -58,31 +59,28 @@ test('Perform complex prints.', function(t) {
   t.end();
 });
 
-// test('Test operator presidence.', function(t) {
-//   t.plan(2);
-//
-//   var output = '';
-//   var program = new runtime.Program({
-//     onPrint: (text) => { output += text; },
-//     code: `int main ( ) {
-//       cout << 12 ;
-//     }`
-//     // cout << ( 12 + 6 / 3 * 2 - 1 ) * 10 ;
-//   });
-//
-//   t.doesNotThrow(program.run);
-//   t.equal(output, '470');
-//
-//   t.end();
-// });
+test('Test operator presidence.', function(t) {
+  t.plan(2);
+
+  var output = '';
+  var program = compiler.compile(`int main ( ) {
+      cout << ( 12 + 6 / 3 * 2 - 1 ) * 10 ;
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
+
+  t.doesNotThrow(program.run);
+  t.equal(output, '150');
+
+  t.end();
+});
 
 test('Test control flow.', function(t) {
   t.plan(2);
 
   var output = '';
-  var program = new runtime.Program({
-    onPrint: (text) => { output += text; },
-    code: `
+  var program = compiler.compile(`
     int main ( ) {
       int i = 1;
       while(i <= 3) {
@@ -96,8 +94,10 @@ test('Test control flow.', function(t) {
         }
         i++;
       }
-    }`
-  });
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
 
   t.doesNotThrow(program.run);
   t.equal(output, '000123000');
@@ -110,10 +110,7 @@ test('Test stepping through statements.', function(t) {
 
   var output = '';
   var assigns = 0;
-  var program = new runtime.Program({
-    onPrint: (text) => { output += text; },
-    onAssign: (text) => { assigns++; },
-    code: `
+  var program = compiler.compile(`
     int main ( ) {
       for(int i = 1; i <= 2; i++) {
         cout << i;
@@ -127,8 +124,11 @@ test('Test stepping through statements.', function(t) {
         cout << 6;
         cout << 7;
       }
-    }`
-  });
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+      onAssign: (text) => { assigns++; },
+    });
 
   t.doesNotThrow(program.step); t.equal(output, '');
   t.doesNotThrow(program.step); t.equal(assigns, 1);
@@ -153,9 +153,7 @@ test('Array of structs.', function(t) {
   t.plan(7);
 
   var output = '';
-  var program = new runtime.Program({
-    onPrint: (text) => { output += text; },
-    code: `
+  var program = compiler.compile(`
     struct Foo {
       int bar ;
     } ;
@@ -169,8 +167,10 @@ test('Array of structs.', function(t) {
       for ( int i = 9 ; i >= 0 ; i -- ) {
         cout << foos [ i ] . bar ;
       }
-    }`
-  });
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
 
   t.doesNotThrow(program.step); // Foo foos [ 10 ] ;
   t.doesNotThrow(program.step); // int i = 0
@@ -189,26 +189,28 @@ test('Basic dynamic memory.', function(t) {
 
   var output = '';
   var dynamicAllocations = 0;
-  var program = new runtime.Program({
-    onPrint: (text) => { output += text; },
-    onDynamicAllocation: (_) => { dynamicAllocations += 1; },
-    code: `int main ( ) { int *y = new int; *y = 7; cout << *y; }`
-  });
+  var program = compiler.compile(`
+    int main ( ) {
+      int *y = new int;
+      *y = 7;
+      cout << *y;
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+      onDynamicAllocation: (_) => { dynamicAllocations += 1; },
+    });
 
   t.doesNotThrow(program.run);
   t.equal(dynamicAllocations, 1);
   t.equal(output, '7');
 });
 
-test('Basic linked list.', function(t) {
+test('Linked list.', function(t) {
   t.plan(3);
 
   var output = '';
   var dynamicAllocations = 0;
-  var program = new runtime.Program({
-    onPrint: (text) => { output += text; },
-    onDynamicAllocation: (_) => { dynamicAllocations += 1; },
-    code: `
+  var program = compiler.compile(`
     struct Node {
       int key;
       Node *next;
@@ -226,8 +228,11 @@ test('Basic linked list.', function(t) {
         cout << head->key;
         head = head->next;
       }
-    }`
-  });
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+      onDynamicAllocation: (_) => { dynamicAllocations += 1; },
+    });
 
   t.doesNotThrow(program.run);
   t.equal(output, '12');
@@ -238,9 +243,7 @@ test('Calling functions.', function(t) {
   t.plan(2);
 
   var output = '';
-  var program = new runtime.Program({
-    onPrint: (text) => { output += text; },
-    code: `
+  var program = compiler.compile(`
     int add_two( int x , int y ) {
       cout << 0;
       return x + y ;
@@ -253,11 +256,38 @@ test('Calling functions.', function(t) {
 
     int main ( ) {
       cout << add_three ( 1 , 2 , 3 ) ;
-    }`
-  });
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
 
   t.doesNotThrow(program.run);
   t.equal(output, '1006');
+});
+
+test('Calling object methods.', function(t) {
+  t.plan(2);
+
+  var output = '';
+  var program = compiler.compile(`
+    struct Node {
+      int num ;
+      void init ( int x , int y ) {
+        num = x  + y ;
+      }
+    } ;
+
+    int main ( ) {
+      Node n ;
+      n . init ( 12 , 47 ) ;
+      cout << n . num ;
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
+
+  t.doesNotThrow(program.run);
+  t.equal(output, '59');
 });
 // test('setting and loading values from memory', function(t) {
 //   t.plan(5);

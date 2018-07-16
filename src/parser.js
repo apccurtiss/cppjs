@@ -24,7 +24,7 @@ var nu_stream_as_string = (p) => parse.bind(p,
     (h, acc) => h + acc,
     ps)));
 
-var consume_all = (p) => lang.then(p, parse.eof);
+var consume_all = (p) => parse.expected('Not end of file', lang.then(p, parse.eof));
 
 var step_point = (p) => {
   return bind_list(
@@ -98,7 +98,7 @@ var group0 = ws(parse.choice(
     parse.bind(ident, (n) => parse.always(new ast.Var(n))),
     lang.between(text.character('('),
                  text.character(')'),
-                 expr)));
+                 ws(expr))));
 var group1 = bopsl(text.string('::'), group0);
 var group2 = parse.late(() => parse.choice(
     // TODO(alex): Casting
@@ -174,7 +174,6 @@ var declarator = (baseParser) => bind_list(
     arrs), name));
 
 var var_decls = parse.bind(typ, (t) => parse.bind(
-  // parse.always([]),
   parse.eager(lang.sepBy1(ws(text.character(',')),
     bind_list(
       declarator(parse.always(t)),
@@ -276,8 +275,9 @@ var obj_tmpl = bind_list(
   lang.between(
     text.character('{'),
     text.character('}'),
-    ws(parse.eager(parse.many(ws(parse.either(
+    ws(parse.eager(parse.many(ws(parse.choice(
       lang.then(text.trie(['public', 'private']), ws(':')),
+      parse.attempt(fn_def),
       lang.then(var_decls, ws(semi))
     )))))),
   (type, name, decls) => {
@@ -287,7 +287,11 @@ var obj_tmpl = bind_list(
     for(var decl of decls) {
       if(decl == 'public') publ = true;
       else if(decl == 'private') publ = false;
-      else {
+      else if(decl instanceof ast.Fn){
+        if (publ) publ.push(decl);
+        else priv.push(decl);
+      }
+      else if(decl instanceof ast.Seq){
         for(var v of decl.elems) {
           if (publ) publ.push(v);
           else priv.push(v);
@@ -302,7 +306,7 @@ var file = parse.bind(
       ws(parse.choice(
         lang.then(obj_tmpl, ws(semi)),
         fn_def)))),
-    (body) => parse.always(new ast.CFile(body)));
+    (body) => parse.always(new ast.Seq(body)));
 
 var parseFile = (s) => parse.run(consume_all(file), s)
 var parseFn = (s) => parse.run(consume_all(fn_def), s)
