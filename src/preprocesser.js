@@ -31,12 +31,6 @@ function preprocess(node) {
       countVars(node.body);
       return new ast.Fn(pp(node.ret), node.name, node.params, pp(node.body), frame);
     }
-    else if(node instanceof ast.Uop) {
-      // TODO(alex): Move conversion from Var to TypName into parsing step
-      if(node.op == 'new') {
-        return new ast.Uop('new', new ast.TypName(node.e1.name));
-      }
-    }
     return node.apply(pp);
   }
 

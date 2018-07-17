@@ -26,6 +26,7 @@ var nu_stream_as_string = (p) => parse.bind(p,
 
 var consume_all = (p) => parse.expected('Not end of file', lang.then(p, parse.eof));
 
+
 var step_point = (p) => {
   return bind_list(
     parse.getPosition, p, parse.getPosition,
@@ -39,6 +40,8 @@ var ident = ws(parse.bind(
   nu_stream_as_string(parse.cons(
   letter_or_under, parse.many(parse.either(letter_or_under, text.digit)))),
   (id) => parse.always(id)));
+
+var word = (w) => parse.attempt(lang.then(text.string(w), parse.look(parse.not(letter_or_under))));
 
 var typ = parse.bind(ident, (t) => parse.always(new ast.TypName(t)));
 
@@ -58,16 +61,6 @@ var string_lit = parse.bind(
 var literal = parse.choice(
   integer_lit,
   string_lit);
-
-var prefxs = (ops, next) => parse.bind(
-  parse.many(ws(ops)),
-  (ops) => parse.bind(
-    next,
-    (e) => parse.always(nu.foldr(
-      (acc, op) => new ast.Uop(op, acc),
-      e,
-      ops
-  ))));
 
 var bopsl = (ops, next) => lang.chainl1(
   parse.bind(
@@ -139,8 +132,18 @@ var group2 = parse.late(() => parse.choice(
       )
     })));
 // TODO(alex): Add casting
-var group3 = prefxs(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&',
-    '*', 'new', 'delete']), group2);
+var group3 = bind_list(
+  parse.many(ws(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&', '*', 'delete']))),
+  parse.choice(
+    parse.bind(parse.next(word('new'), typ), (t) => parse.always(new ast.Uop('new', t))),
+    group2
+  ),
+  (ops, e) => {
+    return nu.foldr(
+      (acc, op) => new ast.Uop(op, acc),
+      e,
+      ops)
+    });
 var group4 = bopsl(text.trie(['.*', '->*']), group3);
 var group5 = bopsl(text.oneOf('*/%'), group4);
 var group6 = bopsl(text.oneOf('+-'), group5);
@@ -193,12 +196,12 @@ var var_decls = parse.bind(typ, (t) => parse.bind(
 var if_stmt = parse.late(() =>
   bind_list(
     ws(lang.between(
-      parse.next(text.string('if'), ws(text.character('('))),
+      parse.next(word('if'), ws(text.character('('))),
       text.character(')'),
       ws(step_point(expr)))),
     ws(stmt),
     parse.optional(undefined,
-      parse.next(text.string('else'),
+      parse.next(word('else'),
       ws(stmt))),
     (cond, body, orelse) => {
       return new ast.If(cond, body, orelse)
@@ -207,7 +210,7 @@ var if_stmt = parse.late(() =>
 var while_loop = parse.late(() =>
   bind_list(
     ws(lang.between(
-      parse.next(text.string('while'), ws(text.character('('))),
+      parse.next(word('while'), ws(text.character('('))),
       text.character(')'),
       ws(step_point(expr)))),
     ws(stmt),
@@ -218,7 +221,7 @@ var while_loop = parse.late(() =>
 var for_loop = parse.late(() =>
   bind_list(
     parse.next(
-      parse.next(text.string('for'), ws(text.character('('))),
+      parse.next(word('for'), ws(text.character('('))),
       step_point(parse.either(parse.attempt(var_decls), expr))),
     lang.between(
       ws(semi),
@@ -249,7 +252,7 @@ var stmt = ws(parse.choice(
   for_loop,
   scope,
   step_point(parse.bind(lang.between(
-    text.string('return'),
+    word('return'),
     semi,
     ws(expr)),
     (e) => parse.always(new ast.Return(e)))),

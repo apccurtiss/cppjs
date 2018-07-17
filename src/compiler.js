@@ -8,9 +8,16 @@ var pp = require('./preprocesser');
 
 function compile(preprocessed_ast) {
   var fns = [];
+  var types = typechecker.verify(preprocessed_ast);
 
   function cmpl(node) {
-    if(node instanceof ast.Fn) {
+    if(node instanceof ast.TypName) {
+      return types[node.typ];
+    }
+    else if(node instanceof ast.TypPtr) {
+      return node;
+    }
+    else if(node instanceof ast.Fn) {
       // console.log('node.frame', node.frame)
       var new_fn = node.apply(cmpl);
       // console.log('new_fn.frame', new_fn.frame)
@@ -105,7 +112,6 @@ function compile(preprocessed_ast) {
   }
 
   var compiled_ast = cmpl(preprocessed_ast);
-  var types = typechecker.verify(preprocessed_ast);
   return {
     ast: compiled_ast,
     functions: fns,

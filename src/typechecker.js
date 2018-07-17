@@ -111,7 +111,7 @@ function typecheck(node) {
           fields[decl.name] = new ast.TypFn(decl.ret, decl.params);
         }
         else {
-          fields[decl.name] = decl.typ;
+          fields[decl.name] = getTyp(decl.typ);
         }
       }
       typs[node.name] = new ast.TypObj(node.name, fields);

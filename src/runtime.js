@@ -27,7 +27,12 @@ function Program(compiled_code, options) {
     '!malloc': new ast.Builtin((typ) => {
       var loc = this.generateHeapAddress(4);
       this.heap[loc] = this.initMemory(typ);
-      this.onDynamicAllocation(typ, loc);
+      if(typ instanceof ast.TypName) {
+        this.onDynamicAllocation(this.types[typ.typ], loc);
+      }
+      else {
+        this.onDynamicAllocation(typ, loc);
+      }
       return new ast.Lit(new ast.TypPtr(typ), loc);
     }),
   };
