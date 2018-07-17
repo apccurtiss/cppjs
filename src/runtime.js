@@ -102,10 +102,6 @@ function Program(compiled_code, options) {
       this.getMemory(loc.e1)[this.getVal(loc.index)] = val;
     }
     else if (loc instanceof ast.MemberAccess){
-      console.log('loc', loc);
-      console.log('loc.e1', loc.e1);
-      console.log('this.stack', this.stack);
-      console.log('this.getMemory(loc.e1)', this.getMemory(loc.e1));
       this.getMemory(loc.e1)[loc.field] = val;
     }
     else {

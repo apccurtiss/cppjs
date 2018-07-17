@@ -17,23 +17,30 @@ function compile(preprocessed_ast) {
       fns.push(new_fn);
       return new_fn;
     }
-    // else if(node instanceof ast.ObjTmpl) {
-    //   for(var decl of node.publ.concat(node.priv)) {
-    //     if(decl instanceof ast.Fn) {
-    //       var new_body = decl.body.apply((node) => {
-    //         if(node instanceof ast.Var) {
-    //           if(!(node.name in decl.frame)) {
-    //             return new MemberAccess(new ast.Deref(new ast.Var('this')), node.name);
-    //           }
-    //         }
-    //         return node;
-    //       });
-    //       var method = new ast.Fn(decl.ret, decl.name,
-    //         [new ast.Decl(undefined, 'this')].concat(decl.params), new_body, decl.frame);
-    //       fns.push(method);
-    //     }
-    //   }
-    // }
+    else if(node instanceof ast.ObjTmpl) {
+      function handleDecl(decl) {
+        if(decl instanceof ast.Fn) {
+          function addThat(node) {
+            if(node instanceof ast.Var && node.name[0] != '!' && !(node.name in decl.frame)) {
+              return new ast.MemberAccess(new ast.Deref(new ast.Var('this')), node.name);
+            }
+            return node.apply(addThat);
+          }
+          var new_body = addThat(cmpl(decl.body));
+          var method = new ast.Fn(decl.ret, decl.name,
+            [new ast.Decl(undefined, 'this')].concat(decl.params), new_body, decl.frame);
+          console.log('Pushing method:', method.body);
+          fns.push(method);
+          return method;
+        }
+        return cmpl(decl);
+      }
+
+      var publ = node.publ.map(handleDecl);
+      var priv = node.priv.map(handleDecl);
+
+      return new ast.ObjTmpl(node.name, publ, priv);
+    }
     else if(node instanceof ast.Scope) {
       // No need for scopes at run time - they can get removed
       return cmpl(node.body);
