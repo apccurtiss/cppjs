@@ -126,4 +126,5 @@ module.exports = {
     var compiled_ast = compile(preprocessed_ast);
     return new runtime.Program(compiled_ast, options || {});
   },
+  ast: ast,
 };

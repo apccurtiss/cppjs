@@ -266,8 +266,8 @@ var params = lang.between(
     ws(lang.sepBy(ws(text.character(',')), declarator(typ)))));
 
 var fn_def = bind_list(
-  typ, ws(ident), ws(params), ws(scope),
-  (typ, name, params, body) => new ast.Fn(typ, name, params, body));
+  declarator(typ), ws(params), ws(scope),
+  (decl, params, body) => new ast.Fn(decl.typ, decl.name, params, body));
 
 var obj_tmpl = bind_list(
   text.trie(['class', 'struct']),

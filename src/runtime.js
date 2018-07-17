@@ -17,9 +17,9 @@ function Program(compiled_code, options) {
   this.heap = {};
 
   this.globals = {
-    'NULL': 0,
-    'nullptr': 0,
-    'endl': '\n',
+    // 'NULL': 0,
+    // 'nullptr': 0,
+    // 'endl': '\n',
     '!print': new ast.Builtin((p) => {
       this.onPrint(String(this.getVal(p)));
       return new ast.Var('!print');
@@ -355,5 +355,4 @@ function Program(compiled_code, options) {
 
 module.exports = {
   Program: Program,
-  ast: ast,
 }
