@@ -237,4 +237,24 @@ module.exports = {
     // this.apply = function(f){ return f(this); }
     this.apply = function(f){ return this; }
   },
+
+  isReducedLValue: function isReducedLValue(node) {
+    function isReduced(node) {
+      if(node instanceof module.exports.Var || node instanceof module.exports.Lit) {
+        return true;
+      }
+      else if(node instanceof module.exports.Deref) {
+        return isReduced(node.e1);
+      }
+      else if(node instanceof module.exports.IndexAccess) {
+        return isReduced(node.e1) && isReduced(node.index);
+      }
+      else if(node instanceof module.exports.MemberAccess) {
+        return isReduced(node.e1);
+      }
+      return false;
+    }
+
+    return !(node instanceof module.exports.Lit) && isReduced(node)
+  }
 }

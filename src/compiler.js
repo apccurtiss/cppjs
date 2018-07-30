@@ -8,19 +8,17 @@ var pp = require('./preprocesser');
 
 function compile(preprocessed_ast) {
   var fns = [];
-  var types = typechecker.verify(preprocessed_ast);
+  var typedefs = typechecker.verify(preprocessed_ast);
 
   function cmpl(node) {
     if(node instanceof ast.TypName) {
-      return types[node.typ];
+      return typedefs[node.typ];
     }
     else if(node instanceof ast.TypPtr) {
       return node;
     }
     else if(node instanceof ast.Fn) {
-      // console.log('node.frame', node.frame)
       var new_fn = node.apply(cmpl);
-      // console.log('new_fn.frame', new_fn.frame)
       fns.push(new_fn);
       return new_fn;
     }
@@ -81,19 +79,19 @@ function compile(preprocessed_ast) {
     else if(node instanceof ast.Uop) {
       var c_e1 = cmpl(node.e1);
       switch(node.op) {
-        case 'new':
-        return new ast.Call(new ast.Var('!malloc'), [c_e1]);
+        // case 'new':
+        // return new ast.Call(new ast.Var('!malloc'), [c_e1]);
         case '*':
-        return new ast.Deref(c_e1);
-        // TODO(alex): Avoid side effect duplication.
+          return new ast.Deref(c_e1);
+          // TODO(alex): Avoid side effect duplication.
         case '++':
-        return new ast.Bop('=', c_e1,
-        new ast.Bop('+', c_e1, new ast.Lit(new ast.TypBase('int'), 1)));
+          return new ast.Bop('=', c_e1,
+          new ast.Bop('+', c_e1, new ast.Lit(new ast.TypBase('int'), 1)));
         case '--':
-        return new ast.Bop('=', c_e1,
-        new ast.Bop('-', c_e1, new ast.Lit(new ast.TypBase('int'), 1)));
+          return new ast.Bop('=', c_e1,
+          new ast.Bop('-', c_e1, new ast.Lit(new ast.TypBase('int'), 1)));
         default:
-        return new ast.Uop(node.op, c_e1);
+          return new ast.Uop(node.op, c_e1);
       }
     }
     else if(node instanceof ast.Bop) {
@@ -115,7 +113,7 @@ function compile(preprocessed_ast) {
   return {
     ast: compiled_ast,
     functions: fns,
-    types: types,
+    typedefs: typedefs,
   }
 }
 
