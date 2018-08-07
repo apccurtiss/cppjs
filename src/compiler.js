@@ -6,45 +6,41 @@ var runtime = require('./runtime');
 var typechecker = require('./typechecker');
 var pp = require('./preprocesser');
 
-function compile(preprocessed_ast) {
+function compile(preprocessedAst) {
   var fns = [];
-  var typedefs = typechecker.verify(preprocessed_ast);
+  var typecheckedAst = typechecker.typecheck(preprocessedAst);
 
   function cmpl(node) {
-    if(node instanceof ast.TypName) {
-      return typedefs[node.typ];
-    }
-    else if(node instanceof ast.TypPtr) {
+    if(node instanceof ast.TypPtr) {
       return node;
+    }
+    else if(node instanceof ast.TypObj) {
+      function handleField(field) {
+        if(field.typ instanceof ast.TypFn) {
+          function addThat(node) {
+            if(node instanceof ast.Var && node.name[0] != '!' && !(node.name in field.frame)) {
+              return new ast.MemberAccess(new ast.Deref(new ast.Var('this')), node.name);
+            }
+            return node.apply(addThat);
+          }
+          var new_body = addThat(cmpl(field.init.body));
+          var method = new ast.Fn(field.init.ret, field.init.name,
+            [new ast.Decl(undefined, 'this')].concat(field.init.params), new_body, field.init.frame);
+          console.log('Pushing method:', method.body);
+          fns.push(method);
+          return method;
+        }
+        return cmpl(field);
+      }
+
+      var fields = node.fields.map(handleField);
+
+      return new ast.TypObj(node.name, fields);
     }
     else if(node instanceof ast.Fn) {
       var new_fn = node.apply(cmpl);
       fns.push(new_fn);
       return new_fn;
-    }
-    else if(node instanceof ast.ObjTmpl) {
-      function handleDecl(decl) {
-        if(decl instanceof ast.Fn) {
-          function addThat(node) {
-            if(node instanceof ast.Var && node.name[0] != '!' && !(node.name in decl.frame)) {
-              return new ast.MemberAccess(new ast.Deref(new ast.Var('this')), node.name);
-            }
-            return node.apply(addThat);
-          }
-          var new_body = addThat(cmpl(decl.body));
-          var method = new ast.Fn(decl.ret, decl.name,
-            [new ast.Decl(undefined, 'this')].concat(decl.params), new_body, decl.frame);
-          console.log('Pushing method:', method.body);
-          fns.push(method);
-          return method;
-        }
-        return cmpl(decl);
-      }
-
-      var publ = node.publ.map(handleDecl);
-      var priv = node.priv.map(handleDecl);
-
-      return new ast.ObjTmpl(node.name, publ, priv);
     }
     else if(node instanceof ast.Scope) {
       // No need for scopes at run time - they can get removed
@@ -109,11 +105,15 @@ function compile(preprocessed_ast) {
     return node.apply(cmpl);
   }
 
-  var compiled_ast = cmpl(preprocessed_ast);
+
+  // console.log(typecheckedAst.elems[0].typ.fields[0]);
+  // console.log(typecheckedAst.elems[0].body.body.elems[0].body.elems[0]);
+  // asdf
+  var compiledAst = cmpl(typecheckedAst);
+
   return {
-    ast: compiled_ast,
+    ast: compiledAst,
     functions: fns,
-    typedefs: typedefs,
   }
 }
 
@@ -125,10 +125,10 @@ function compile(preprocessed_ast) {
 
 module.exports = {
   compile: (code, options) => {
-    var parsed_ast = parser.parseFile(code);
-    var preprocessed_ast = pp.preprocess(parsed_ast);
-    var compiled_ast = compile(preprocessed_ast);
-    return new runtime.Program(compiled_ast, options || {});
+    var parsedAst = parser.parseFile(code);
+    var preprocessedAst = pp.preprocess(parsedAst);
+    var compiledAst = compile(preprocessedAst);
+    return new runtime.Program(compiledAst, options || {});
   },
   ast: ast,
 };

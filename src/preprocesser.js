@@ -17,20 +17,20 @@ function preprocess(node) {
         return defines[node.name];
       }
     }
-    if(node instanceof ast.Fn) {
-      var frame = {};
-      for(var p of node.params) {
-        frame[p.name] = p.typ;
-      }
-      function countVars(node) {
-        if(node instanceof ast.Decl) {
-          frame[node.name] = node.typ;
-        }
-        return node.apply(countVars);
-      }
-      countVars(node.body);
-      return new ast.Fn(pp(node.ret), node.name, node.params, pp(node.body), frame);
-    }
+    // if(node instanceof ast.Fn) {
+    //   var frame = {};
+    //   for(var p of node.params) {
+    //     frame[p.name] = p.typ;
+    //   }
+    //   function countVars(node) {
+    //     if(node instanceof ast.Decl) {
+    //       frame[node.name] = node.typ;
+    //     }
+    //     return node.apply(countVars);
+    //   }
+    //   countVars(node.body);
+    //   return new ast.Fn(pp(node.ret), node.name, node.params, pp(node.body), frame);
+    // }
     return node.apply(pp);
   }
 

@@ -109,7 +109,7 @@ var group2 = parse.late(() => parse.choice(
           text.trie(['.', '->']),
           ws(ident),
           (op, field) => (e) =>
-            new ast.MemberAccess(op == '.' ? e : new ast.Uop('*', e), field)),
+            new ast.MemberAccess(op == '.' ? e : new ast.Deref(e), field)),
         parse.bind(lang.between(
           ws(text.character('[')),
           ws(text.character(']')),
@@ -140,7 +140,12 @@ var group3 = bind_list(
   ),
   (ops, e) => {
     return nu.foldr(
-      (acc, op) => new ast.Uop(op, acc),
+      (acc, op) => {
+        if(op == '*') {
+          return new ast.Deref(acc);
+        }
+        return new ast.Uop(op, acc);
+      },
       e,
       ops)
     });
@@ -270,7 +275,21 @@ var params = lang.between(
 
 var fn_def = bind_list(
   declarator(typ), ws(params), ws(scope),
-  (decl, params, body) => new ast.Fn(decl.typ, decl.name, params, body));
+  (decl, params, body) => {
+    var frame = {};
+    for(var p of params) {
+      frame[p.name] = p.typ;
+    }
+    function countVars(node) {
+      if(node instanceof ast.Decl) {
+        frame[node.name] = node.typ;
+      }
+      return node.apply(countVars);
+    }
+    countVars(body);
+    return new ast.Fn(decl.typ, decl.name, params, body, frame);
+    // new ast.Fn(decl.typ, decl.name, params, body)
+  });
 
 var obj_tmpl = bind_list(
   text.trie(['class', 'struct']),
@@ -283,31 +302,30 @@ var obj_tmpl = bind_list(
       parse.attempt(fn_def),
       lang.then(var_decls, ws(semi))
     )))))),
-  (type, name, decls) => {
+  (type, name, lines) => {
     var publ = type == 'struct';
-    var publ = [];
-    var priv = [];
-    for(var decl of decls) {
-      if(decl == 'public') publ = true;
-      else if(decl == 'private') publ = false;
-      else if(decl instanceof ast.Fn){
-        if (publ) publ.push(decl);
-        else priv.push(decl);
+    var fields = [];
+    for(var line of lines) {
+      if(line == 'public') publ = true;
+      else if(line == 'private') publ = false;
+      else if(line instanceof ast.Fn){
+        var typ = new ast.TypFn(line.ret, line.params);
+        fields.push(new ast.ObjField(line.name, publ ? 'public' : 'private', typ, line));
       }
-      else if(decl instanceof ast.Seq){
-        for(var v of decl.elems) {
-          if (publ) publ.push(v);
-          else priv.push(v);
+      else if(line instanceof ast.Seq){
+        for(var decl of line.elems) {
+          fields.push(new ast.ObjField(decl.name, publ ? 'public' : 'private', decl.typ, decl.init));
         }
       }
     }
-    return new ast.ObjTmpl(name, publ, priv);
+    return new ast.TypObj(name, fields);
   });
 
 var file = parse.bind(
     parse.eager(parse.many(
       ws(parse.choice(
-        lang.then(obj_tmpl, ws(semi)),
+        parse.bind(lang.then(obj_tmpl, ws(semi)),
+          (obj_tmpl) => parse.always(new ast.Typedef(obj_tmpl.name, obj_tmpl))),
         fn_def)))),
     (body) => parse.always(new ast.Seq(body)));
 

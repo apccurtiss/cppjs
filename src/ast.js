@@ -1,27 +1,27 @@
 module.exports = {
   // Types
-  TypName: function(typ) {
-    this.typ = typ;
-    this.asString = () => typ;
+  TypName: function(name) {
+    this.name = name;
+    this.asString = () => name;
 
-    // this.apply = function(f){ return f(this); }
     this.apply = function(f){ return this; }
+    this.walk = function(f){ return this; }
   },
 
   TypBase: function(typ) {
     this.typ = typ;
     this.asString = () => typ;
 
-    // this.apply = function(f){ return f(this); }
     this.apply = function(f){ return this; }
+    this.walk = function(f){ return this; }
   },
 
   TypPtr: function(typ) {
     this.typ = typ;
     this.asString = () => typ.asString() + '*';
 
-    // this.apply = function(f){ return f(new module.exports.TypPtr(this.typ.apply(f))); }
     this.apply = function(f){ return new module.exports.TypPtr(f(this.typ)); }
+    this.walk = function(f){ f(this.typ); return this; };
   },
 
   TypArr: function(typ, size) {
@@ -29,8 +29,8 @@ module.exports = {
     this.size = size;
     this.asString = () => typ.asString() + (size == undefined) ? '[]' : '[' + size + ']';
 
-    // this.apply = function(f){ return f(new module.exports.TypArr(this.typ.apply(f), size)); }
     this.apply = function(f){ return new module.exports.TypArr(f(this.typ), f(size)); }
+    this.walk = function(f){ f(this.typ); f(size); return this; };
   },
 
   TypObj: function(name, fields) {
@@ -41,63 +41,86 @@ module.exports = {
         return name;
       }
       let ret = '{ ';
-      for(field in fields) {
-        ret += fields[field].asString + ' ' + field + '; ';
+      for(field of fields) {
+        ret += field.typ == this ? this.name : field.typ.asString() + ' ' + field.name + '; ';
       }
-      return ret + ' }';
+      ret += ret + ' }';
+      return ret;
     };
 
-    this.apply = function(f){
-      fields = {};
-      for(field in this.fields) {
-        // fields[field] = this.fields[field].apply(f);
-        fields[field] = f(this.fields[field]);
-      }
-      // return f(new module.exports.TypObj(this.name, fields));
-      return new module.exports.TypObj(this.name, fields);
-    };
+    this.apply = function(f){ return new module.exports.TypObj(this.name, this.fields.map(f)); };
+    this.walk = function(f){ this.fields.map(f); return this; };
   },
 
   TypFn: function(ret, params) {
     this.ret = ret;
     this.params = params;
 
-    // this.apply = function(f){ return f(new module.exports.TypFn(this.ret.apply(f), this.params.map((p) => p.apply(f)))); };
     this.apply = function(f){ return new module.exports.TypFn(f(this.ret), this.params.map(f)); };
+    this.walk = function(f){ f(this.ret), this.params.map(f); return this; };
   },
 
-  // AST nodes
+  // LValues
 
-  Lit: function(typ, val) {
-    this.typ = typ;
-    this.val = val;
-
-    // this.apply = function(f){ return f(this); }
-    this.apply = function(f){ return this; }
-  },
-
-  Var: function(name) {
+  Var: function(name, typ) {
     this.name = name;
-
-    // this.apply = function(f){ return f(this); }
-    this.apply = function(f){ return this; }
-  },
-
-  Decl: function(typ, name, init) {
     this.typ = typ;
-    this.name = name;
-    this.init = init;
+    this.asString = () => name;
 
-    // this.apply = function(f){ return f(new module.exports.Decl(this.typ.apply(f), this.name, this.init ? this.init.apply(f) : this.init )); }
-    this.apply = function(f){ return new module.exports.Decl(f(this.typ), this.name, this.init ? f(this.init) : this.init ); }
+    this.apply = function(f){ return new module.exports.Var(this.name, this.typ ? f(this.typ) : this.typ); }
+    this.walk = function(f){ f(this.typ); return this; };
   },
+
+  MemberAccess: function(e1, field, e1typ) {
+    this.e1 = e1;
+    this.field = field;
+    this.e1typ = e1typ;
+    this.asString = () => e1.asString() + '.' + field;
+
+    this.apply = function(f){ return new module.exports.MemberAccess(f(this.e1), this.field, this.e1typ ? f(this.e1typ) : this.e1typ); }
+    this.walk = function(f){ f(this.e1); f(this.e1typ); return this; };
+  },
+
+  IndexAccess: function(e1, index, e1typ) {
+    this.e1 = e1;
+    this.index = index;
+    this.e1typ = e1typ;
+    this.asString = () => e1.asString() + '[' + index.val + ']';
+
+    this.apply = function(f){ return new module.exports.IndexAccess(f(this.e1), f(this.index), this.e1typ ? f(this.e1typ) : this.e1typ); }
+    this.walk = function(f){
+      f(this.e1);
+      f(this.index);
+      if(this.e1typ) {
+        f(this.e1typ);
+      }
+      return this;
+    };
+  },
+
+  Deref: function(e1, e1typ) {
+    this.e1 = e1;
+    this.e1typ = e1typ;
+    this.asString = () => '*' + e1.asString();
+
+    this.apply = function(f){ return new module.exports.Deref(f(this.e1), this.e1typ ? f(this.e1typ) : this.e1typ); }
+    this.walk = function(f){
+      f(this.e1);
+      if(this.e1typ) {
+        f(this.e1typ);
+      }
+      return this;
+    };
+  },
+
+  // Expressions
 
   Uop: function(op, e1) {
     this.op = op;
     this.e1 = e1;
 
-    // this.apply = function(f){ return f(new module.exports.Uop(this.op, this.e1.apply(f))); }
     this.apply = function(f){ return new module.exports.Uop(this.op, f(this.e1)); }
+    this.walk = function(f){ f(this.e1); return this; };
   },
 
   Bop: function(op, e1, e2) {
@@ -105,8 +128,8 @@ module.exports = {
     this.e1 = e1;
     this.e2 = e2;
 
-    // this.apply = function(f){ return f(new module.exports.Bop(this.op, this.e1.apply(f), this.e2.apply(f))); }
     this.apply = function(f){ return new module.exports.Bop(this.op, f(this.e1), f(this.e2)); }
+    this.walk = function(f){ f(this.e1); f(this.e2); return this; };
   },
 
   Ternary: function(cond, e1, e2) {
@@ -114,36 +137,49 @@ module.exports = {
     this.e1 = e1;
     this.e2 = e2;
 
-    // this.apply = function(f){ return f(new module.exports.Ternary(this.cond.apply(f), this.e1.apply(f), this.e2.apply(f))); }
     this.apply = function(f){ return new module.exports.Ternary(f(this.cond), f(this.e1), f(this.e2)); }
+    this.walk = function(f){ f(this.cond); f(this.e1); f(this.e2); return this; };
   },
 
   Nop: function() {
-    // this.apply = function(f){ return f(this); }
     this.apply = function(f){ return this; }
+    this.walk = function(f){ return; return this; };
   },
 
-  MemberAccess: function(e1, field) {
-    this.e1 = e1;
-    this.field = field;
+  Lit: function(typ, val) {
+    this.typ = typ;
+    this.val = val;
 
-    // this.apply = function(f){ return f(new module.exports.MemberAccess(this.e1.apply(f), this.field)); }
-    this.apply = function(f){ return new module.exports.MemberAccess(f(this.e1), this.field); }
+    this.apply = function(f){ return this; }
+    this.walk = function(f){ return this; };
   },
 
-  IndexAccess: function(e1, index) {
-    this.e1 = e1;
-    this.index = index;
+  Call: function(fn, args, position) {
+    this.fn = fn;
+    this.args = args;
+    // Call is the one AST node that stores it's own position, because it's
+    // position is set during the function call step.
+    this.position = position;
 
-    // this.apply = function(f){ return f(new module.exports.IndexAccess(this.e1.apply(f), this.index)); }
-    this.apply = function(f){ return new module.exports.IndexAccess(f(this.e1), f(this.index)); }
+    this.apply = function(f){ return new module.exports.Call(f(fn), this.args.map(f), this.position); }
+    this.walk = function(f){ f(fn); this.args.map(f); return this; };
   },
 
-  Deref: function(e1) {
-    this.e1 = e1;
+  // Statements
 
-    // this.apply = function(f){ return f(new module.exports.Deref(this.e1.apply(f))); }
-    this.apply = function(f){ return new module.exports.Deref(f(this.e1)); }
+  Decl: function(typ, name, init) {
+    this.typ = typ;
+    this.name = name;
+    this.init = init;
+
+    this.apply = function(f){ return new module.exports.Decl(f(this.typ), this.name, this.init ? f(this.init) : this.init ); }
+    this.walk = function(f){
+      f(this.typ);
+      if(this.init) {
+        f(this.init);
+      }
+      return this;
+    };
   },
 
   Fn: function(ret, name, params, body, frame) {
@@ -153,49 +189,53 @@ module.exports = {
     this.body = body;
     this.frame = frame;
 
-    // this.apply = function(f){ return f(new module.exports.Fn(this.ret, this.name, this.params.map((x) => x.apply(f)), this.body.apply(f), this.frame)); }
-    this.apply = function(f){ return new module.exports.Fn(this.ret, this.name, this.params.map(f), f(this.body), this.frame); }
-  },
-
-  ObjTmpl: function(name, publ, priv) {
-    this.name = name;
-    this.publ = publ;
-    this.priv = priv;
-
     this.apply = function(f){
-      // var publ = this.publ.map((x => x.apply(f)));
-      // var priv = this.priv.map((x => x.apply(f)));
-      // return f(new module.exports.ObjTmpl(this.name, publ, priv));
-      var publ = this.publ.map(f);
-      var priv = this.priv.map(f);
-      return new module.exports.ObjTmpl(this.name, publ, priv);
+      var newFrame = {};
+      for(var v in this.frame) {
+        newFrame[v] = f(this.frame[v]);
+      }
+      return new module.exports.Fn(this.ret, this.name, this.params.map(f), f(this.body), newFrame);
     }
+    this.walk = function(f){ f(this.ret); f(this.name); this.params.map(f); f(this.body); return this; };
   },
 
-  Call: function(fn, args, position) {
-    this.fn = fn;
-    this.args = args;
-    // Call is the one AST node that stores it's position, because it's
-    // position is set during the function call step.
-    this.position = position;
+  Typedef: function(name, typ) {
+    this.name = name;
+    this.typ = typ;
 
-    // this.apply = function(f){ return f(new module.exports.Call(fn.map(f), this.args.map((x) => x.apply(f)), this.position)); }
-    this.apply = function(f){ return new module.exports.Call(f(fn), this.args.map(f), this.position); }
+    this.apply = function(f){ return new module.exports.Typedef(this.name, f(this.typ)); };
+    this.walk = function(f){ f(this.typ); return this; };
+  },
+
+  ObjField: function(name, visibility, typ, init) {
+    this.name = name;
+    this.visibility = visibility;
+    this.typ = typ;
+    this.init = init;
+
+    this.apply = function(f){ return new module.exports.ObjField(this.name, this.visibility, f(this.typ), this.init ? f(this.init) : this.init) };
+    this.walk = function(f){
+      f(this.typ);
+      if(this.init) {
+        f(this.init);
+      }
+      return this;
+    };
   },
 
   Return: function(e1) {
     this.e1 = e1;
 
-    // this.apply = function(f){ return f(new module.exports.Return(this.e1.apply(f))); }
     this.apply = function(f){ return new module.exports.Return(f(this.e1)); }
+    this.walk = function(f){ f(this.e1); return this; };
   },
 
   Loop: function(cond, body) {
     this.cond = cond;
     this.body = body;
 
-    // this.apply = function(f){ return f(new module.exports.Loop(this.cond.apply(f), this.body.apply(f))); }
     this.apply = function(f){ return new module.exports.Loop(f(this.cond), f(this.body)); }
+    this.walk = function(f){ f(this.cond); f(this.body); return this; };
   },
 
   If: function(cond, body, orelse) {
@@ -203,39 +243,46 @@ module.exports = {
     this.body = body;
     this.orelse = orelse;
 
-    // this.apply = function(f){ return f(new module.exports.If(this.cond.apply(f), this.body.apply(f), this.orelse ? this.orelse.apply(f) : this.orelse )); }
     this.apply = function(f){ return new module.exports.If(f(this.cond), f(this.body), this.orelse ? f(this.orelse) : this.orelse ); }
+    this.walk = function(f){
+      f(this.cond);
+      f(this.body);
+      if(this.orelse) {
+        f(this.orelse);
+      }
+      return this;
+    };
   },
 
   Scope: function(body) {
     this.body = body;
 
-    // this.apply = function(f){ return f(new module.exports.Scope(this.body.apply(f))); }
     this.apply = function(f){ return new module.exports.Scope(f(this.body)); }
+    this.walk = function(f){ f(this.body); return this; }
   },
 
   Seq: function(elems) {
     this.elems = elems;
 
-    // this.apply = function(f){ return f(new module.exports.Seq(this.elems.map((x) => x.apply(f)))); }
     this.apply = function(f){ return new module.exports.Seq(this.elems.map(f)); }
+    this.walk = function(f){ this.elems.map(f); return this; }
   },
 
-  // Compiler created
+  // Compiler metadata
 
   Steppoint: function(position, body) {
     this.position = position;
     this.body = body;
 
-    // this.apply = function(f){ return f(new module.exports.Steppoint(this.position, this.body.apply(f))); }
     this.apply = function(f){ return new module.exports.Steppoint(this.position, f(this.body)); }
+    this.walk = function(f){ f(this.body); return this; }
   },
 
   Builtin: function(f) {
     this.f = f;
 
-    // this.apply = function(f){ return f(this); }
     this.apply = function(f){ return this; }
+    this.walk = function(f){ return this; }
   },
 
   isReducedLValue: function isReducedLValue(node) {

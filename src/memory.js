@@ -2,18 +2,28 @@
 
 var ast = require('./ast');
 
-function MemoryModel(builtins, typedefs) {
+function MemoryModel(builtins) {
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView
   // var buffer = new ArrayBuffer(1024);
   // var view = new DataView(buffer);
+  // var esp = 0;
+  // var ebp = 0;
+  //
   // var loc = 4;
   // view.setInt8(loc, 10);
   // view.getInt8(loc);
 
   var memory = {};
 
-  var stack = [{ '!bot': 10000, }];
-  var heap = {};
+  function valueAtAddress(loc, typ) {
+    return memory[loc];
+  }
+
+  function setAddress(loc, typ, val) {
+    return memory[loc] = val;
+  }
+
+  var stack = [{ '!bot': 10000 },];
   var globals = {};
 
   var generator = (function* addressGenerator() {
@@ -34,53 +44,71 @@ function MemoryModel(builtins, typedefs) {
     return stack[stack.length-1];
   }
 
-  function defaultMemory(typ) {
+  function getTypSize(typ) {
     if(typ instanceof ast.TypBase) {
       switch(typ.typ) {
         case 'string':
-          return '';
+          return 4;
         default:
-          return 0;
+          return 4;
       }
     }
     else if(typ instanceof ast.TypPtr) {
-      return undefined;
+      return 4;
     }
     else if(typ instanceof ast.TypArr) {
-      var newArr = Array(typ.size.val);
-      for(var i = 0; i < newArr.length; i++) {
-        newArr[i] = defaultMemory(typ.typ);
-      }
-      return newArr;
+      return getTypSize(typ.typ) * typ.size.val;
     }
     else if(typ instanceof ast.TypObj) {
-      return Object.keys(typ.fields).reduce(
-        (acc, h) => {
-          if(!(typ.fields[h] instanceof ast.TypFn)) {
-            acc[h] = defaultMemory(typ.fields[h]);
+      return typ.fields.reduce(
+        (acc, field) => {
+          if(!(field.typ instanceof ast.TypFn)) {
+            return acc + getTypSize(field.typ);
           }
           return acc;
-        }, {});
-    }
-    else if(typ instanceof ast.TypName) {
-      return defaultMemory(typedefs[typ.typ]);
+        }, 0);
     }
     else {
       throw Error('Unsupported type: ' + typ.constructor.name)
     }
-  };
-
-  function lookupAddress(loc, typ) {
-    return memory[loc];
   }
 
-  function setAddress(loc, typ, val) {
-    return memory[loc] = val;
+  function initMemory(loc, typ) {
+    if(typ instanceof ast.TypBase) {
+      switch(typ.typ) {
+        case 'string':
+          setAddress(loc, typ, '');
+        default:
+          setAddress(loc, typ, 0);
+      }
+    }
+    else if(typ instanceof ast.TypPtr) {
+      setAddress(loc, typ, 0);
+    }
+    else if(typ instanceof ast.TypArr) {
+      var elementSize = getTypSize(typ.typ);
+      for(var i = 0; i < typ.size.val; i++) {
+        initMemory(loc + i * elementSize, typ.typ);
+      }
+    }
+    else if(typ instanceof ast.TypObj) {
+      typ.fields.reduce(
+        (acc, field) => {
+          if(!(field.typ instanceof ast.TypFn)) {
+            initMemory(loc + acc, field.typ);
+            return acc + getTypSize(field.typ);
+          }
+          return acc;
+        }, 0);
+    }
+    else {
+      throw Error('Unsupported type: ' + typ.constructor.name)
+    }
   }
 
   this.malloc = function(typ) {
-    var address = generator.next().value;
-    setAddress(address, typ, defaultMemory(typ));
+    var address = generator.next(getTypSize(typ)).value;
+    initMemory(address, typ);
     return address;
   };
 
@@ -88,15 +116,16 @@ function MemoryModel(builtins, typedefs) {
     var stack_bot = getCurrentStackFrame()['!bot'];
 
     // Add return pointer
-    var new_frame = { '!retptr': stack_bot, };
-    memory[stack_bot] = onRet;
     stack_bot -= 4;
+    var new_frame = { '!retptr': stack_bot, };
+    setAddress(stack_bot, undefined, onRet);
 
     // Add frame variables
     for(var v in fn.frame) {
-      memory[stack_bot] = (v in args) ? args[v] : defaultMemory(fn.frame[v]);
+      stack_bot -= getTypSize(fn.frame[v]);
+      // initMemory(stack_bot, fn.frame[v]);
+      setAddress(stack_bot, fn.frame[v], args[v])
       new_frame[v] = stack_bot;
-      stack_bot -= 1;
     }
 
     // Push new frame to stack
@@ -108,73 +137,58 @@ function MemoryModel(builtins, typedefs) {
     stack.pop();
   }
 
-  this.getAddress = function(node) {
-    if(node instanceof ast.Lit) {
-      return node.val;
-    }
-    else if(node instanceof ast.Var) {
-      var stackFrame = getCurrentStackFrame();
-      if(node.name in stackFrame) {
-        return lookupAddress(stackFrame[node.name]);
-      }
-      return lookupAddress(globals[node.name]);
-    }
-    else if(node instanceof ast.Deref) {
-      return this.lookupAddress(this.lookupLValue(node.e1));
-    }
-    else if(node instanceof ast.IndexAccess) {
-      return this.lookupLValue(node.e1)[this.lookupLValue(node.index)];
-    }
-    else if(node instanceof ast.MemberAccess) {
-      return this.lookupLValue(node.e1)[node.field];
-    }
-  }
-
-  this.lookupLValue = function(node, typ) {
-    console.assert(ast.isReducedLValue(node));
-    function lookup(node) {
-      if(node instanceof ast.Lit) {
-        return node.val;
-      }
-      else if(node instanceof ast.Var) {
-        var stackFrame = getCurrentStackFrame();
-        if(node.name in stackFrame) {
-          return lookupAddress(stackFrame[node.name]);
-        }
-        return lookupAddress(globals[node.name]);
-      }
-      else if(node instanceof ast.Deref) {
-        return lookupAddress(lookup(node.e1));
-      }
-      else if(node instanceof ast.IndexAccess) {
-        return lookup(node.e1)[lookup(node.index)];
-      }
-      else if(node instanceof ast.MemberAccess) {
-        return lookup(node.e1)[node.field];
-      }
-    }
-    return lookup(node);
-  }
-
-  this.setLValue = function(node, typ, val) {
+  this.addrOfLValue = function(node) {
+    // console.log("Getting info on:", node)
     console.assert(ast.isReducedLValue(node));
     if(node instanceof ast.Var) {
       var stackFrame = getCurrentStackFrame();
       if(node.name in stackFrame) {
-        return setAddress(stackFrame[node.name], typ, val);
+        return stackFrame[node.name];
       }
-      return setAddress(globals[node.name], typ, val);
+      return globals[node.name];
     }
     else if(node instanceof ast.Deref) {
-      // Checks if it's got a val, if not, look it up
-      setAddress(node.e1.val || this.lookupLValue(node.e1), typ, val);
+      if(node.e1 instanceof ast.Lit) {
+        return node.e1.val;
+      }
+      return this.valueOfLValue(node.e1);
     }
     else if(node instanceof ast.IndexAccess) {
-      this.lookupLValue(node.e1)[this.lookupLValue(node.index)] = val;
+      var addr = this.addrOfLValue(node.e1);
+      var elementSize = getTypSize(node.e1typ);
+      return addr + elementSize * this.valueOfLValue(node.index);
     }
     else if(node instanceof ast.MemberAccess) {
-      this.lookupLValue(node.e1)[node.field] = val;
+      var addr = this.addrOfLValue(node.e1);
+      var offset = 0;
+      for(var field of node.e1typ.fields) {
+        if(field.name == node.field) {
+          return addr + offset;
+        }
+        offset += getTypSize(field.typ);
+      }
     }
+  }
+
+  this.valueOfLValue = function(node) {
+    // console.log("Getting value of:", node);
+    var addr = this.addrOfLValue(node);
+    // console.log("Address:", addr)
+    // console.log("Memory:", memory)
+    // console.log("Stack:", stack)
+    // console.log("Val:", valueAtAddress(addr, node.typ))
+    return valueAtAddress(addr, node.typ);
+  }
+
+  this.setLValue = function(node, val) {
+    // console.log("Setting:", node)
+    // console.log("To be:", val)
+    // console.log(memory)
+    // console.log(stack)
+    var addr = this.addrOfLValue(node);
+    // console.log(addr)
+    setAddress(addr, node.typ, val);
+    // console.log(memory)
   }
 }
 

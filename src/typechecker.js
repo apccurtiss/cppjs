@@ -2,12 +2,13 @@
 
 var ast = require('./ast');
 var errors = require('./errors');
+var memory = require('./memory');
 
 function verifyTyps(typ1, typ2) {
   return true;
 }
 
-function typecheck(node) {
+function typecheck(tree) {
   var typs = {
     char: new ast.TypBase('char'),
     bool: new ast.TypBase('bool'),
@@ -17,125 +18,209 @@ function typecheck(node) {
   };
 
   function getTyp(node, env) {
-    if(node instanceof ast.TypBase || node instanceof ast.TypPtr ||
-       node instanceof ast.TypArr || node instanceof ast.TypObj ||
-       node instanceof ast.TypFn) {
-      return node;
+    // Types
+    if(node instanceof ast.TypBase) {
+      return [node, node];
+    }
+    else if(node instanceof ast.TypPtr) {
+      var [ptrTyp, _] = getTyp(node.typ, env);
+      var typ = new ast.TypPtr(ptrTyp);
+      return [typ, typ];
+    }
+    else if(node instanceof ast.TypArr) {
+      var [elementTyp, _] = getTyp(node.typ, env);
+      var [size, sizeTyp] = getTyp(node.size, env);
+      var typ = new ast.TypArr(elementTyp, size);
+      return [typ, typ];
+    }
+    else if(node instanceof ast.TypObj) {
+      var fields = node.fields.map((f) => {
+        var [field, _] = getTyp(f);
+        return field;
+      });
+      var typ = new ast.TypObj(node.name, fields);
+      return [typ, typ];
+    }
+    else if(node instanceof ast.TypFn) {
+      var [ret, _] = getTyp(node.ret, env);
+      var params = node.params.map((p) => {
+        var [param, _] = getTyp(p);
+        return param;
+      });
+      return new ast.TypFn(ret, params);
     }
     else if(node instanceof ast.TypName) {
-      return typs[node.typ];
-    }
-    else if(node instanceof ast.Lit) {
-      return node.typ;
-    }
-    else if(node instanceof ast.Var) {
-      if(node.name in env) {
-        return env[node.name];
+      if(!(node.name in typs)) {
+        throw Error("Unknown type: " + node.name);
       }
-      throw new errors.CJSTypeError(node.name + ' was not declared');
+      var typ = typs[node.name];
+      return [typ, typ];
     }
-    else if(node instanceof ast.Decl) {
-      env[node.name] = node.typ;
-      if(node.init) verifyTyps(getTyp(node.init, env), node.typ);
-      return typs.void;
-    }
-    else if(node instanceof ast.Uop) {
-      var t1 = getTyp(node.e1, env);
-      return t1;
-    }
-    else if(node instanceof ast.Bop) {
-      var t1 = getTyp(node.e1, env), t2 = getTyp(node.e2, env);
-      return t1;
-    }
-    else if(node instanceof ast.Ternary) {
-      var t1 = getTyp(node.e1, env), t2 = getTyp(node.e2, env), t3 = getTyp(node.e3, env);
-      return t1;
-    }
-    else if(node instanceof ast.Nop) {
-      return typs.void;
+    // LValues
+    else if(node instanceof ast.Var) {
+      if(!(node.name in env)) {
+        throw new errors.CJSTypeError(node.name + ' was not declared');
+      }
+      return [new ast.Var(node.name, env[node.name]), env[node.name]];
     }
     else if(node instanceof ast.MemberAccess) {
-      return getTyp(node.e1, env);
+      var [e1, t1] = getTyp(node.e1, env);
+      if(!(t1 instanceof ast.TypObj)) {
+        throw Error("Can only access the member '" + node.field + "' of an object, not of a(n) " + t1.asString());
+      }
+      for(var field of t1.fields) {
+        if(field.name == node.field) {
+          return [new ast.MemberAccess(e1, node.field, t1), field.typ];
+        }
+      }
+      throw Error("An object of type " + t1.name + " has no field named '" + node.field + "'.");
     }
     else if(node instanceof ast.IndexAccess) {
-      var ti = getTyp(node.index, env);
-      verifyTyps(ti, typs.int);
-      return getTyp(node.e1, env);
+      var [e1, t1] = getTyp(node.e1, env);
+      var [index, tindex] = getTyp(node.index, env);
+      verifyTyps(tindex, typs.int);
+      return [new ast.IndexAccess(e1, index, t1), t1.typ];
     }
     else if(node instanceof ast.Deref) {
-      var t1 = getTyp(node.e1, env);
+      var [e1, t1] = getTyp(node.e1, env);
       if(!(t1 instanceof ast.TypPtr)) {
         throw new errors.CJSTypeError('Must dereference pointer, not ' + t1.toString());
       }
-      return t1.typ;
+      return [new ast.Deref(e1, t1), t1.typ];
+    }
+    // Others
+    else if(node instanceof ast.Lit) {
+      return [node, node.typ];
+    }
+    else if(node instanceof ast.ObjField) {
+      var [typ, _] = getTyp(node.typ, env);
+      if(node.init) {
+        var [init, tinit] = getTyp(node.init, env);
+        verifyTyps(typ, tinit);
+        return [new ast.ObjField(node.name, node.visibility, typ, init), typs.void];
+      }
+      return [new ast.ObjField(node.name, node.visibility, typ, node.init), typs.void];
+
+    }
+    else if(node instanceof ast.Typedef) {
+      if(node.typ instanceof ast.TypName) {
+        var [typ, _] = getTyp(node.typ);
+        typs[node.name] = typ;
+      }
+      else {
+        // Object created prematurely and filled later in case of recursive types.
+        typs[node.name] = new node.typ.constructor();
+        var [typ, _] = getTyp(node.typ);
+        for(var f in typ) typs[node.name][f] = typ[f];
+      }
+      return [new ast.Typedef(node.name, typ), typs.void];
+    }
+    else if(node instanceof ast.Decl) {
+      var [typ, _] = getTyp(node.typ, env);
+      env[node.name] = typ;
+      if(node.init) {
+        var [init, initTyp] = getTyp(node.init, env);
+        verifyTyps(initTyp, typ);
+        return [new ast.Decl(typ, node.name, init), typs.void];
+      }
+      return [new ast.Decl(typ, node.name, node.init), typs.void];
+    }
+    else if(node instanceof ast.Uop) {
+      var [e1, t1] = getTyp(node.e1, env);
+      return [new ast.Uop(node.op, e1), t1];
+    }
+    else if(node instanceof ast.Bop) {
+      var [e1, t1] = getTyp(node.e1, env), [e2, t2] = getTyp(node.e2, env);
+      verifyTyps(t1, t2);
+      return [new ast.Bop(node.op, e1, e2), t1];
+    }
+    else if(node instanceof ast.Ternary) {
+      var [cond, tcond] = getTyp(node.cond, env), [e1, t1] = getTyp(node.e1, env), [e2, t2] = getTyp(node.e2, env);
+      verifyTyps(t1, t2);
+      return [new ast.Ternary(cond, e1, e2), t1];
+    }
+    else if(node instanceof ast.Nop) {
+      return [node, typs.void];
     }
     else if(node instanceof ast.Fn) {
-      env[node.name] = node.ret;
+      var [ret, _] = getTyp(node.ret);
+      var params = node.params.map((p) => {
+        var [param, _] = getTyp(p.typ);
+        return new ast.Decl(param, p.name);
+      });
+      var typ = new ast.TypFn(ret, params.map((x) => x.typ));
+
+      env[node.name] = typ;
       var newEnv = Object.assign({}, env);
-      for(var p of node.params) {
+      for(var p of params) {
         newEnv[p.name] = p.typ;
       }
-      var tb = getTyp(node.body, newEnv);
-      // TODO(alex): Fill out
-      return new ast.TypFn(node.ret, []);
+
+      var frame = {};
+      for(var v in node.frame) {
+        var [ftyp, _] = getTyp(node.frame[v], newEnv);
+        frame[v] = ftyp;
+      }
+      var [body, _] = getTyp(node.body, newEnv);
+      return [new ast.Fn(ret, node.name, params, body, frame), typ];
     }
     else if(node instanceof ast.Call) {
-      var tf = getTyp(node.fn, env);
-      var ta = node.args.map((a) => getTyp(a, env));
-      return tf.ret;
+      var [fn, tfn] = getTyp(node.fn, env);
+      var args = node.args.map((a, i) => {
+        var [arg, targ] = getTyp(a, env);
+        verifyTyps(targ, tfn.params[i]);
+        return arg;
+      });
+      return [new ast.Call(fn, args), tfn.ret];
     }
     else if(node instanceof ast.Return) {
-      // TODO(alex): Figure out this ties in with ast.Fn
-      var t1 = getTyp(node.e1, env);
-      return typs.void;
+      // TODO(alex): Figure out how to figure out what t1 needs to be
+      var [e1, t1] = getTyp(node.e1, env);
+      return [new ast.Return(e1), typs.void];
     }
     else if(node instanceof ast.Loop) {
-      var tc = getTyp(node.cond, env);
-      var tb = getTyp(node.body, env);
-      return typs.void;
+      var [cond, tcond] = getTyp(node.cond, env);
+      var [body, tbody] = getTyp(node.body, env);
+      return [new ast.Loop(cond, body), typs.void];
     }
     else if(node instanceof ast.If) {
-      var tc = getTyp(node.cond, env);
-      var tb = getTyp(node.body, env);
-      return typs.void;
+      var [cond, tcond] = getTyp(node.cond, env);
+      var [body, _] = getTyp(node.body, env);
+      if(node.orelse) {
+        var [orelse, _] = getTyp(node.orelse, env);
+        return [new ast.If(cond, body, orelse), typs.void];
+      }
+      return [new ast.If(cond, body, node.orelse), typs.void];
     }
     else if(node instanceof ast.Seq) {
-      node.elems.map((e) => getTyp(e, env));
-      return typs.void;
-    }
-    else if(node instanceof ast.ObjTmpl) {
-      var fields = {};
-      for(var decl of node.publ.concat(node.priv)) {
-        getTyp(decl, env);
-        if(decl instanceof ast.Fn) {
-          fields[decl.name] = new ast.TypFn(decl.ret, decl.params);
-        }
-        else {
-          fields[decl.name] = getTyp(decl.typ);
-        }
-      }
-      typs[node.name] = new ast.TypObj(node.name, fields);
-      return typs.void;
+      var elems = node.elems.map((e) => {
+        var [elem, _] = getTyp(e, env);
+        return elem;
+      });
+      return [new ast.Seq(elems), typs.void];
     }
     else if(node instanceof ast.Scope) {
       var newEnv = Object.assign({}, env);
-      getTyp(node.body, newEnv);
-      return typs.void;
+      var [body, _] = getTyp(node.body, newEnv);
+      return [new ast.Scope(body), typs.void];
     }
     else if(node instanceof ast.Steppoint) {
-      return getTyp(node.body, env);
+      var [body, tbody] = getTyp(node.body, env);
+      return [new ast.Steppoint(node.position, body), tbody];
     }
     throw Error('Unimplemented type: ' + node.constructor.name);
   }
 
-  getTyp(node, {
+  var builtinEnv = {
     'cout': typs.void,
     'endl': typs.string,
-  });
+  };
 
-  return typs;
+  var [flatTree, _] = getTyp(tree, builtinEnv);
+
+  return flatTree;
 }
 
 module.exports = {
-  verify: (node) => typecheck(node),
+  typecheck: (node) => typecheck(node),
 }

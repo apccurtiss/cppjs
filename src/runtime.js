@@ -23,7 +23,7 @@ function Program(compiled_code, options) {
     functions[fn.name] = fn;
   }
 
-  var memory = new mem.MemoryModel(functions, compiled_code.typedefs);
+  var memory = new mem.MemoryModel(functions);
 
   function valueOf(leaf) {
     if(leaf instanceof ast.Lit) {
@@ -31,29 +31,19 @@ function Program(compiled_code, options) {
     }
     else {
       console.assert(ast.isReducedLValue(leaf));
-      return memory.lookupLValue(leaf);
+      return memory.valueOfLValue(leaf);
     }
   }
 
   this.stepgen = function(current, next) {
-    if(current instanceof ast.Builtin || current instanceof ast.TypBase ||
-      current instanceof ast.Lit || current instanceof ast.Var
-      || current instanceof ast.Nop) {
+    if(current instanceof ast.Builtin || current instanceof ast.Nop ||
+      current instanceof ast.Lit || current instanceof ast.Var ||
+      current instanceof ast.TypPtr || current instanceof ast.TypBase ||
+      current instanceof ast.TypFn) {
       return next(current);
     }
 
-    else if(current instanceof ast.TypPtr) {
-      return this.stepgen(current.typ,
-        (vt) => next(new ast.TypPtr(vt)));
-    }
-
-    else if(current instanceof ast.TypName) {
-      return next(current);
-    }
-
-    else if(current instanceof ast.TypFn) {
-      return next(current);
-    }
+    // Types
 
     else if(current instanceof ast.TypArr) {
       return this.stepgen(current.typ,
@@ -62,13 +52,48 @@ function Program(compiled_code, options) {
     }
 
     else if(current instanceof ast.TypObj) {
-      var fields = Object.keys(current.fields).reduce((acc, h) => {
-        return this.stepgen(current.fields[h], (hv) => {
-          acc[h] = hv;
+      var fields = current.fields.reduce((acc, f) => {
+        return this.stepgen(f, (fv) => {
+          acc.push(fv);
           return acc;
         });
-      }, {});
+      }, []);
       return next(new ast.TypObj(current.name, fields));
+    }
+
+    // LValues
+
+    else if(current instanceof ast.MemberAccess) {
+      return this.stepgen(current.e1, (v1) => {
+        return next(new ast.MemberAccess(v1, current.field, current.e1typ));
+      });
+    }
+
+    else if(current instanceof ast.IndexAccess) {
+      return this.stepgen(current.e1, (v1) => {
+        return this.stepgen(current.index, (v2) => {
+          return next(new ast.IndexAccess(v1, v2, current.e1typ));
+        });
+      });
+    }
+
+    else if(current instanceof ast.Deref) {
+      return this.stepgen(current.e1, (v1) => {
+        return next(new ast.Deref(new ast.Lit(current.e1typ, valueOf(v1)), current.e1typ));
+      });
+    }
+
+    // Other AST Nodes
+
+    else if(current instanceof ast.ObjField) {
+        return this.stepgen(current.typ,
+          (tv) => {
+            if(current.init) {
+              return this.stepgen(current.init,
+                (iv) => next(new ast.ObjField(current.name, current.visibility, tv, iv)));
+            }
+            return next(new ast.ObjField(current.name, current.visibility, tv, current.init));
+          });
     }
 
     else if(current instanceof ast.Seq) {
@@ -101,35 +126,36 @@ function Program(compiled_code, options) {
     }
 
     else if(current instanceof ast.Bop) {
-      return this.stepgen(current.e1, (v1) =>
-        this.stepgen(current.e2, (v2) => {
+      return this.stepgen(current.e1, (e1) =>
+        this.stepgen(current.e2, (e2) => {
           switch(current.op) {
             case '=':
-              memory.setLValue(v1, undefined, valueOf(v2));
-              this.onAssign(v1, valueOf(v2));
-              return next(v2);
+              var v2 = valueOf(e2);
+              memory.setLValue(e1, v2);
+              this.onAssign(e1, v2);
+              return next(e2);
             case '+':
-              return next(new ast.Lit('int', valueOf(v1) + valueOf(v2)));
+              return next(new ast.Lit('int', valueOf(e1) + valueOf(e2)));
             case '-':
-              return next(new ast.Lit('int', valueOf(v1) - valueOf(v2)));
+              return next(new ast.Lit('int', valueOf(e1) - valueOf(e2)));
             case '*':
-              return next(new ast.Lit('int', valueOf(v1) * valueOf(v2)));
+              return next(new ast.Lit('int', valueOf(e1) * valueOf(e2)));
             case '/':
-              return next(new ast.Lit('int', Math.floor(valueOf(v1) / valueOf(v2))));
+              return next(new ast.Lit('int', Math.floor(valueOf(e1) / valueOf(e2))));
             case '%':
-              return next(new ast.Lit('int', valueOf(v1) % valueOf(v2)));
+              return next(new ast.Lit('int', valueOf(e1) % valueOf(e2)));
             case '==':
-              return next(new ast.Lit('bool', valueOf(v1) == valueOf(v2)));
+              return next(new ast.Lit('bool', valueOf(e1) == valueOf(e2)));
             case '!=':
-              return next(new ast.Lit('bool', valueOf(v1) != valueOf(v2)));
+              return next(new ast.Lit('bool', valueOf(e1) != valueOf(e2)));
             case '<':
-              return next(new ast.Lit('bool', valueOf(v1) < valueOf(v2)));
+              return next(new ast.Lit('bool', valueOf(e1) < valueOf(e2)));
             case '>':
-              return next(new ast.Lit('bool', valueOf(v1) > valueOf(v2)));
+              return next(new ast.Lit('bool', valueOf(e1) > valueOf(e2)));
             case '<=':
-              return next(new ast.Lit('bool', valueOf(v1) <= valueOf(v2)));
+              return next(new ast.Lit('bool', valueOf(e1) <= valueOf(e2)));
             case '>=':
-              return next(new ast.Lit('bool', valueOf(v1) >= valueOf(v2)));
+              return next(new ast.Lit('bool', valueOf(e1) >= valueOf(e2)));
             default:
               throw Error('Unimplemented bop: ' + current.op);
           }
@@ -137,30 +163,10 @@ function Program(compiled_code, options) {
       );
     }
 
-    else if(current instanceof ast.MemberAccess) {
-      return this.stepgen(current.e1, (v1) => {
-        return next(new ast.MemberAccess(v1, current.field));
-      });
-    }
-
-    else if(current instanceof ast.IndexAccess) {
-      return this.stepgen(current.e1, (v1) => {
-        return this.stepgen(current.index, (v2) => {
-          return next(new ast.IndexAccess(v1, v2));
-        });
-      });
-    }
-
-    else if(current instanceof ast.Deref) {
-      return this.stepgen(current.e1, (v1) => {
-        return next(new ast.Deref(new ast.Lit(undefined, valueOf(v1))));
-      });
-    }
-
     else if(current instanceof ast.Return) {
       return this.stepgen(current.e1, (v1) => {
         var ret_val = new ast.Lit(undefined, valueOf(v1));
-        return memory.lookupLValue(new ast.Var('!retptr'))(ret_val);
+        return memory.valueOfLValue(new ast.Var('!retptr'))(ret_val);
       });
     }
 
@@ -178,6 +184,9 @@ function Program(compiled_code, options) {
           // console.log('Fn:', fn);
           console.assert(current.args.length == fn.params.length);
           var args = {};
+          if(v1 instanceof ast.MemberAccess) {
+            args['this'] = memory.addrOfLValue(v1.e1);
+          }
           return current.args.reduceRight((acc, h, i) => {
             return this.stepgen(h, (v) => {
               args[fn.params[i].name] = valueOf(v);
