@@ -180,24 +180,23 @@ function Program(compiled_code, options) {
           });
         }
         else {
-          // console.log('V1:', v1);
-          // console.log('Fn:', fn);
-          console.assert(current.args.length == fn.params.length);
-          var args = {};
+          var args = current.args;
           if(v1 instanceof ast.MemberAccess) {
-            args['this'] = memory.addrOfLValue(v1.e1);
+            args.unshift(new ast.Lit(new ast.TypPtr(v1.e1typ), memory.addrOfLValue(v1.e1)));
           }
-          return current.args.reduceRight((acc, h, i) => {
+          var argVals = {};
+          console.assert(args.length == fn.params.length);
+          return args.reduceRight((acc, h, i) => {
             return this.stepgen(h, (v) => {
-              args[fn.params[i].name] = valueOf(v);
+              argVals[fn.params[i].name] = valueOf(v);
               return acc;
             });
           }, (_) => {
             // Give state information to user
             this.position = current.position;
             this.onFnCall(fn.name, fn.frame);
-            for(var a in args) {
-              this.onAssign(new ast.Var(a), args[a]);
+            for(var a in argVals) {
+              this.onAssign(new ast.Var(a), argVals[a]);
             }
 
             // This function will be called when the function returns
@@ -208,7 +207,7 @@ function Program(compiled_code, options) {
             };
 
             // Add stack frame to memory
-            memory.call(fn, args, onRet);
+            memory.call(fn, argVals, onRet);
 
             return this.stepgen(fn.body, (_) => onRet(new ast.Lit()));
           });

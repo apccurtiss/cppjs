@@ -53,6 +53,9 @@ function MemoryModel(builtins) {
           return 4;
       }
     }
+    else if(typ instanceof ast.TypFn) {
+      return 0;
+    }
     else if(typ instanceof ast.TypPtr) {
       return 4;
     }
@@ -163,11 +166,15 @@ function MemoryModel(builtins) {
       var offset = 0;
       for(var field of node.e1typ.fields) {
         if(field.name == node.field) {
+          if(field.typ instanceof ast.TypFn) {
+            return globals[field.name];
+          }
           return addr + offset;
         }
         offset += getTypSize(field.typ);
       }
     }
+    throw Error("Internal error. Something has gone wrong.")
   }
 
   this.valueOfLValue = function(node) {
@@ -176,7 +183,7 @@ function MemoryModel(builtins) {
     // console.log("Address:", addr)
     // console.log("Memory:", memory)
     // console.log("Stack:", stack)
-    // console.log("Val:", valueAtAddress(addr, node.typ))
+    // console.log("Val", valueAtAddress(addr, node.typ))
     return valueAtAddress(addr, node.typ);
   }
 

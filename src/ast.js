@@ -199,6 +199,14 @@ module.exports = {
     this.walk = function(f){ f(this.ret); f(this.name); this.params.map(f); f(this.body); return this; };
   },
 
+  // Method: function(objTyp, fn) {
+  //   this.objTyp = objTyp;
+  //   this.fn = fn;
+  //
+  //   this.apply = function(f){ return new module.exports.Method(f(this.objTyp), f(this.fn)); };
+  //   this.walk = function(f){ f(this.objTyp); f(this.fn); return this; };
+  // },
+
   Typedef: function(name, typ) {
     this.name = name;
     this.typ = typ;

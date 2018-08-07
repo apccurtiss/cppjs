@@ -35,19 +35,36 @@ function typecheck(tree) {
     }
     else if(node instanceof ast.TypObj) {
       var fields = node.fields.map((f) => {
-        var [field, _] = getTyp(f);
-        return field;
+        var [typ, _] = getTyp(f.typ, env);
+        return new ast.ObjField(f.name, f.visibility, typ, f.init);
       });
+
+      // Created early to allow recursive references through 'this'.
       var typ = new ast.TypObj(node.name, fields);
+      var thisTyp = new ast.TypPtr(typ);
+      var objEnv = Object.assign({ 'this': thisTyp, }, env);
+
+      for(var f of fields) {
+        if(f.init) {
+          var [init, _] = getTyp(f.init, objEnv);
+          // Add 'this' as the first parameter if it's a function.
+          if(f.typ instanceof ast.TypFn) {
+            init.params.unshift(new ast.Decl(thisTyp, 'this'));
+            init.frame['this'] = thisTyp;
+          }
+          f.init = init;
+        }
+      }
       return [typ, typ];
     }
     else if(node instanceof ast.TypFn) {
       var [ret, _] = getTyp(node.ret, env);
       var params = node.params.map((p) => {
-        var [param, _] = getTyp(p);
+        var [param, _] = getTyp(p, env);
         return param;
       });
-      return new ast.TypFn(ret, params);
+      var typ = new ast.TypFn(ret, params);
+      return [typ, typ];
     }
     else if(node instanceof ast.TypName) {
       if(!(node.name in typs)) {
@@ -59,6 +76,14 @@ function typecheck(tree) {
     // LValues
     else if(node instanceof ast.Var) {
       if(!(node.name in env)) {
+        var that = env['this'];
+        if(that) {
+          for(var field of that.typ.fields) {
+            if(field.name == node.name) {
+              return [new ast.MemberAccess(new ast.Deref(new ast.Var('this', that), that.typ), field.name, that.typ), field.typ];
+            }
+          }
+        }
         throw new errors.CJSTypeError(node.name + ' was not declared');
       }
       return [new ast.Var(node.name, env[node.name]), env[node.name]];
@@ -104,13 +129,13 @@ function typecheck(tree) {
     }
     else if(node instanceof ast.Typedef) {
       if(node.typ instanceof ast.TypName) {
-        var [typ, _] = getTyp(node.typ);
+        var [typ, _] = getTyp(node.typ, env);
         typs[node.name] = typ;
       }
       else {
         // Object created prematurely and filled later in case of recursive types.
         typs[node.name] = new node.typ.constructor();
-        var [typ, _] = getTyp(node.typ);
+        var [typ, _] = getTyp(node.typ, env);
         for(var f in typ) typs[node.name][f] = typ[f];
       }
       return [new ast.Typedef(node.name, typ), typs.void];
@@ -143,9 +168,9 @@ function typecheck(tree) {
       return [node, typs.void];
     }
     else if(node instanceof ast.Fn) {
-      var [ret, _] = getTyp(node.ret);
+      var [ret, _] = getTyp(node.ret, env);
       var params = node.params.map((p) => {
-        var [param, _] = getTyp(p.typ);
+        var [param, _] = getTyp(p.typ, env);
         return new ast.Decl(param, p.name);
       });
       var typ = new ast.TypFn(ret, params.map((x) => x.typ));

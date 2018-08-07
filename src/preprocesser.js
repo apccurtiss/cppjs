@@ -17,19 +17,28 @@ function preprocess(node) {
         return defines[node.name];
       }
     }
-    // if(node instanceof ast.Fn) {
-    //   var frame = {};
-    //   for(var p of node.params) {
-    //     frame[p.name] = p.typ;
-    //   }
-    //   function countVars(node) {
-    //     if(node instanceof ast.Decl) {
-    //       frame[node.name] = node.typ;
+    // else if(node instanceof ast.TypObj) {
+    //   function handleField(field) {
+    //     if(field.typ instanceof ast.TypFn) {
+    //       function addThis(node) {
+    //         if(node instanceof ast.Var && node.name[0] != '!' && !(node.name in field.frame)) {
+    //           return new ast.MemberAccess(new ast.Deref(new ast.Var('this')), node.name);
+    //         }
+    //         return node.apply(addThis);
+    //       }
+    //       var new_body = addThis(cmpl(field.init.body));
+    //       var method = new ast.Fn(field.init.ret, field.init.name,
+    //         [new ast.Decl(undefined, 'this')].concat(field.init.params), new_body, field.init.frame);
+    //       console.log('Pushing method:', method.body);
+    //       fns.push(method);
+    //       return method;
     //     }
-    //     return node.apply(countVars);
+    //     return cmpl(field);
     //   }
-    //   countVars(node.body);
-    //   return new ast.Fn(pp(node.ret), node.name, node.params, pp(node.body), frame);
+    //
+    //   var fields = node.fields.map(handleField);
+    //
+    //   return new ast.TypObj(node.name, fields);
     // }
     return node.apply(pp);
   }

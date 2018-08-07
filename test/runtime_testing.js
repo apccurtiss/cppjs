@@ -265,27 +265,27 @@ test('Calling functions.', function(t) {
   t.equal(output, '1006');
 });
 
-// test('Calling object methods.', function(t) {
-//   t.plan(2);
-//
-//   var output = '';
-//   var program = compiler.compile(`
-//     struct Node {
-//       int num ;
-//       void init ( int x , int y ) {
-//         num = x  + y ;
-//       }
-//     } ;
-//
-//     int main ( ) {
-//       Node n ;
-//       n . init ( 12 , 47 ) ;
-//       cout << n . num ;
-//     }`,
-//     {
-//       onPrint: (text) => { output += text; },
-//     });
-//
-//   t.doesNotThrow(program.run);
-//   t.equal(output, '59');
-// });
+test('Calling object methods.', function(t) {
+  t.plan(2);
+
+  var output = '';
+  var program = compiler.compile(`
+    struct Node {
+      int num ;
+      void init ( int x , int y ) {
+        num = x  + y ;
+      }
+    } ;
+
+    int main ( ) {
+      Node n ;
+      n . init ( 12 , 47 ) ;
+      cout << n . num ;
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
+
+  t.doesNotThrow(program.run);
+  t.equal(output, '59');
+});

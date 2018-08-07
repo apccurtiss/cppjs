@@ -15,27 +15,27 @@ function compile(preprocessedAst) {
       return node;
     }
     else if(node instanceof ast.TypObj) {
-      function handleField(field) {
+      var fields = node.fields.map((field) => {
         if(field.typ instanceof ast.TypFn) {
-          function addThat(node) {
-            if(node instanceof ast.Var && node.name[0] != '!' && !(node.name in field.frame)) {
-              return new ast.MemberAccess(new ast.Deref(new ast.Var('this')), node.name);
-            }
-            return node.apply(addThat);
-          }
-          var new_body = addThat(cmpl(field.init.body));
-          var method = new ast.Fn(field.init.ret, field.init.name,
-            [new ast.Decl(undefined, 'this')].concat(field.init.params), new_body, field.init.frame);
-          console.log('Pushing method:', method.body);
-          fns.push(method);
-          return method;
+          fns.push(field.init);
         }
         return cmpl(field);
-      }
-
-      var fields = node.fields.map(handleField);
+      });
 
       return new ast.TypObj(node.name, fields);
+    }
+    // Don't recurse on LValue types - there's no need, and it could go infinite.
+    else if(node instanceof ast.Var) {
+      return node;
+    }
+    else if(node instanceof ast.Deref) {
+      return new ast.Deref(cmpl(node.e1), node.e1typ);
+    }
+    else if(node instanceof ast.MemberAccess) {
+      return new ast.MemberAccess(cmpl(node.e1), node.field, node.e1typ);
+    }
+    else if(node instanceof ast.IndexAccess) {
+      return new ast.IndexAccess(cmpl(node.e1), cmpl(node.index), node.e1typ);
     }
     else if(node instanceof ast.Fn) {
       var new_fn = node.apply(cmpl);
@@ -77,15 +77,13 @@ function compile(preprocessedAst) {
       switch(node.op) {
         // case 'new':
         // return new ast.Call(new ast.Var('!malloc'), [c_e1]);
-        case '*':
-          return new ast.Deref(c_e1);
-          // TODO(alex): Avoid side effect duplication.
+        // TODO(alex): Avoid side effect duplication.
         case '++':
           return new ast.Bop('=', c_e1,
-          new ast.Bop('+', c_e1, new ast.Lit(new ast.TypBase('int'), 1)));
+            new ast.Bop('+', c_e1, new ast.Lit(new ast.TypBase('int'), 1)));
         case '--':
           return new ast.Bop('=', c_e1,
-          new ast.Bop('-', c_e1, new ast.Lit(new ast.TypBase('int'), 1)));
+            new ast.Bop('-', c_e1, new ast.Lit(new ast.TypBase('int'), 1)));
         default:
           return new ast.Uop(node.op, c_e1);
       }
@@ -99,16 +97,12 @@ function compile(preprocessedAst) {
           return new ast.Call(new ast.Var('!print'), [c_e2]);
         }
         default:
-        return new ast.Bop(node.op, c_e1, c_e2);
+          return new ast.Bop(node.op, c_e1, c_e2);
       }
     }
     return node.apply(cmpl);
   }
 
-
-  // console.log(typecheckedAst.elems[0].typ.fields[0]);
-  // console.log(typecheckedAst.elems[0].body.body.elems[0].body.elems[0]);
-  // asdf
   var compiledAst = cmpl(typecheckedAst);
 
   return {
