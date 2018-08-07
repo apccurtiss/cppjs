@@ -289,3 +289,60 @@ test('Calling object methods.', function(t) {
   t.doesNotThrow(program.run);
   t.equal(output, '59');
 });
+
+test('Linked list class', function(t) {
+  t.plan(2);
+
+  var output = '';
+  var program = compiler.compile(`
+    struct Node {
+      int key;
+      Node *next;
+    };
+
+    struct LinkedList {
+      Node *add(int v) {
+        Node *newNode = new Node;
+        newNode->key = v;
+        newNode->next = NULL;
+
+        if(!head) {
+          head = newNode;
+        }
+        else {
+          Node *tmp = head;
+          while(tmp->next != NULL) {
+            tmp = tmp->next;
+          }
+          tmp->next = newNode;
+        }
+
+        return head;
+      }
+
+      void print() {
+        Node *tmp = head;
+        while(tmp != NULL) {
+          cout << tmp->key;
+          tmp = tmp->next;
+        }
+      }
+
+      Node *head;
+    };
+
+
+    int main ( ) {
+      LinkedList ll;
+      ll.add(6);
+      ll.add(7);
+      ll.add(2);
+      ll.print();
+    }`,
+    {
+      onPrint: (text) => { output += text; },
+    });
+
+  t.doesNotThrow(program.run);
+  t.equal(output, '672');
+});
