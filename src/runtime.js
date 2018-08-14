@@ -4,11 +4,23 @@ var ast = require('./ast');
 var mem = require('./memory');
 
 function Program(compiled_code, options) {
-  this.onPrint = options.onPrint || ((text) => {});
-  this.onFnCall = options.onFnCall || ((name, vars) => {});
-  this.onFnEnd = options.onFnEnd || ((name, ret) => {});
-  this.onDynamicAllocation = options.onDynamicAllocation || ((type, loc) => {});
-  this.onAssign = options.onAssign || ((name, val) => {});
+  function deferErrors(f) {
+    if(!f) return () => {};
+    return (...args) => {
+      try {
+        f(...args);
+      }
+      catch(e) {
+        console.error(e);
+      };
+    }
+  }
+  this.onPrint = deferErrors(options.onPrint);
+  this.onFnCall = deferErrors(options.onFnCall);
+  this.onFnEnd = deferErrors(options.onFnEnd);
+  this.onDynamicAllocation = deferErrors(options.onDynamicAllocation);
+  this.onAssign = deferErrors(options.onAssign);
+  this.onPositionChange = deferErrors(options.onPositionChange);
   this.errorFormat = options.errorFormat || 'cjs';
   this.types = compiled_code.types;
 
@@ -58,7 +70,7 @@ function Program(compiled_code, options) {
           return acc;
         });
       }, []);
-      return next(new ast.TypObj(current.name, fields));
+      return next(new ast.TypObj(current.name, fields, current.constructors));
     }
 
     // LValues
@@ -86,14 +98,14 @@ function Program(compiled_code, options) {
     // Other AST Nodes
 
     else if(current instanceof ast.ObjField) {
-        return this.stepgen(current.typ,
-          (tv) => {
-            if(current.init) {
-              return this.stepgen(current.init,
-                (iv) => next(new ast.ObjField(current.name, current.visibility, tv, iv)));
-            }
-            return next(new ast.ObjField(current.name, current.visibility, tv, current.init));
-          });
+      return this.stepgen(current.typ,
+        (tv) => {
+          if(current.init) {
+            return this.stepgen(current.init,
+              (iv) => next(new ast.ObjField(current.name, current.visibility, tv, iv)));
+          }
+          return next(new ast.ObjField(current.name, current.visibility, tv, current.init));
+        });
     }
 
     else if(current instanceof ast.Seq) {
@@ -111,9 +123,13 @@ function Program(compiled_code, options) {
             return next(new ast.Lit(new ast.TypBase('int'), -valueOf(v1)));
           case '+':
             return next(v1);
+          case '&':
+            return next(new ast.Lit(new ast.TypPtr(v1.typ), memory.addrOfLValue(v1)));
+          case '!':
+            return next(new ast.Lit(new ast.TypBase('bool'), !valueOf(v1)));
           case 'new':
             var loc = memory.malloc(v1);
-            this.onDynamicAllocation(v1, loc)
+            this.onDynamicAllocation(v1, loc);
             return next(new ast.Lit(new ast.TypBase('int'), loc));
           default:
             throw Error('Unimplemented uop: ' + current.op);
@@ -179,6 +195,11 @@ function Program(compiled_code, options) {
             return next(fn.f.apply(null, [r]))
           });
         }
+        else if(fn instanceof ast.Lit){
+          console.assert(fn.typ instanceof ast.TypPtr && fn.typ.typ instanceof ast.TypObj);
+          console.log(current);
+          Ready
+        }
         else {
           var args = current.args;
           if(v1 instanceof ast.MemberAccess) {
@@ -193,8 +214,8 @@ function Program(compiled_code, options) {
             });
           }, (_) => {
             // Give state information to user
-            this.position = current.position;
-            this.onFnCall(fn.name, fn.frame);
+            this.onPositionChange(current.position);
+            this.onFnCall(fn.name, fn.params.map((p) => argVals[p.name]), fn.frame, fn.position);
             for(var a in argVals) {
               this.onAssign(new ast.Var(a), argVals[a]);
             }
@@ -217,7 +238,7 @@ function Program(compiled_code, options) {
 
     else if(current instanceof ast.Steppoint) {
       return (_) => {
-        this.position = current.position;
+        this.onPositionChange(current.position);
         return this.stepgen(current.body, next);
       };
     }
@@ -246,11 +267,11 @@ function Program(compiled_code, options) {
         }
       });
     }
+    console.trace("Here:")
     throw Error('Unimplemented type: ' + '"' + current.constructor.name) + '"';
   }
 
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
-    this.position = undefined;
     return null;
   });
 
@@ -268,4 +289,5 @@ function Program(compiled_code, options) {
 
 module.exports = {
   Program: Program,
+  initMemory: mem.initMemory,
 }

@@ -55,6 +55,7 @@ function typecheck(tree) {
           f.init = init;
         }
       }
+
       return [typ, typ];
     }
     else if(node instanceof ast.TypFn) {
@@ -152,7 +153,12 @@ function typecheck(tree) {
     }
     else if(node instanceof ast.Uop) {
       var [e1, t1] = getTyp(node.e1, env);
-      return [new ast.Uop(node.op, e1), t1];
+      switch(node.op) {
+        case '&':
+          return [new ast.Uop(node.op, e1), new ast.TypPtr(t1)];
+        default:
+          return [new ast.Uop(node.op, e1), t1];
+      }
     }
     else if(node instanceof ast.Bop) {
       var [e1, t1] = getTyp(node.e1, env), [e2, t2] = getTyp(node.e2, env);
@@ -187,7 +193,7 @@ function typecheck(tree) {
         frame[v] = ftyp;
       }
       var [body, _] = getTyp(node.body, newEnv);
-      return [new ast.Fn(ret, node.name, params, body, frame), typ];
+      return [new ast.Fn(ret, node.name, params, body, frame, node.position), typ];
     }
     else if(node instanceof ast.Call) {
       var [fn, tfn] = getTyp(node.fn, env);
@@ -196,8 +202,22 @@ function typecheck(tree) {
         verifyTyps(targ, tfn.params[i]);
         return arg;
       });
-      return [new ast.Call(fn, args), tfn.ret];
+      return [new ast.Call(fn, args, node.position), tfn.ret];
     }
+    // else if(node instanceof ast.Construct) {
+    //   var [addr, taddr] = getTyp(node.addr, env);
+    //   var options = taddr.typ.constructors;
+    //   var args = [], argTyps = [];
+    //   for(var a of node.args) {
+    //     var [arg, targ] = getTyp(a, env);
+    //     args.push(arg);
+    //     argTyps.push(targ);
+    //   }
+    //   function isViableCandidate(args, cons) {
+    //     if(len(args))
+    //   }
+    //   return [new ast.Construct(addr, args), typs.void];
+    // }
     else if(node instanceof ast.Return) {
       // TODO(alex): Figure out how to figure out what t1 needs to be
       var [e1, t1] = getTyp(node.e1, env);
@@ -237,7 +257,7 @@ function typecheck(tree) {
   }
 
   var builtinEnv = {
-    'cout': typs.void,
+    'cout': new ast.TypObj('cout', []),
     'endl': typs.string,
   };
 

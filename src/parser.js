@@ -84,6 +84,12 @@ var ternary = (next) => lang.chainr1(
     (e1) => parse.always((cond, e2) => new ast.Ternary(cond, e2, e3))),
   next);
 
+var arg_list = parse.late(() => lang.between(
+    ws(text.character('(')),
+    ws(text.character(')')),
+      // Group17 used here because commas are a valid operator in group18.
+      parse.eager(lang.sepBy(ws(text.character(',')), group17))));
+
 // https://msdn.microsoft.com/en-us/library/126fe14k.aspx
 var expr = parse.late(() => group18);
 var group0 = ws(parse.choice(
@@ -116,11 +122,7 @@ var group2 = parse.late(() => parse.choice(
           expr),
           (index) => parse.always((e) =>
             new ast.IndexAccess(e, index))),
-        bind_list(lang.between(
-          ws(text.character('(')),
-          ws(text.character(')')),
-          // Group17 used here because commas are a valid operator in group18.
-          parse.eager(lang.sepBy(ws(text.character(',')), group17))),
+        bind_list(arg_list,
           parse.getPosition,
           (args, endPos) => (e, startPos) =>
             new ast.Call(e, args, { start: startPos, end: endPos }))))),
@@ -132,12 +134,14 @@ var group2 = parse.late(() => parse.choice(
       )
     })));
 // TODO(alex): Add casting
-var group3 = bind_list(
+var group3 = parse.late(() => bind_list(
   parse.many(ws(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&', '*', 'delete']))),
   parse.choice(
-    parse.bind(parse.next(word('new'), typ), (t) => parse.always(new ast.Uop('new', t))),
-    group2
-  ),
+    bind_list(
+      parse.next(word('new'), typ),
+      parse.optional(undefined, arg_list),
+      (t, args) => new ast.Uop('new', t)),
+    group2),
   (ops, e) => {
     return nu.foldr(
       (acc, op) => {
@@ -148,7 +152,7 @@ var group3 = bind_list(
       },
       e,
       ops)
-    });
+    }));
 var group4 = bopsl(text.trie(['.*', '->*']), group3);
 var group5 = bopsl(text.oneOf('*/%'), group4);
 var group6 = bopsl(text.oneOf('+-'), group5);
@@ -181,21 +185,23 @@ var declarator = (baseParser) => bind_list(
       ptrs),
     arrs), name));
 
-var var_decls = parse.bind(typ, (t) => parse.bind(
-  parse.eager(lang.sepBy1(ws(text.character(',')),
-    bind_list(
-      declarator(parse.always(t)),
-      parse.optional(undefined, parse.next(
+var var_decls = parse.bind(typ,
+  (t) => parse.bind(parse.eager(lang.sepBy1(ws(text.character(',')),
+    parse.bind(declarator(parse.always(t)),
+      (decl) => parse.optional(decl, parse.either(
+        parse.bind(arg_list,
+          (args) => {
+            return parse.always(new ast.Seq([
+              decl,
+              new ast.Call(new ast.MemberAccess(new ast.Var(decl.name), t.name), args)
+            ]));
+          }),
         // Group 17 used because ',' is a valid operator at group 18
-        ws(text.character('=')),
-        group17)),
-      (decl, assign) => {
-        if(assign) {
-          decl.init = assign;
-        }
-        return decl;
-      }
-    ))),
+        parse.bind(parse.next(ws(text.character('=')), group17),
+          (init) => {
+            decl.init = init;
+            return parse.always(decl);
+          })))))),
     (decls) => parse.always(new ast.Seq(decls))));
 
 var if_stmt = parse.late(() =>
@@ -274,8 +280,8 @@ var params = lang.between(
     ws(lang.sepBy(ws(text.character(',')), declarator(typ)))));
 
 var fn_def = bind_list(
-  declarator(typ), ws(params), ws(scope),
-  (decl, params, body) => {
+  parse.getPosition, declarator(typ), ws(params), ws(scope), parse.getPosition,
+  (start, decl, params, body, end) => {
     var frame = {};
     for(var p of params) {
       frame[p.name] = p.typ;
@@ -287,39 +293,57 @@ var fn_def = bind_list(
       return node.apply(countVars);
     }
     countVars(body);
-    return new ast.Fn(decl.typ, decl.name, params, body, frame);
-    // new ast.Fn(decl.typ, decl.name, params, body)
+    return new ast.Fn(decl.typ, decl.name, params, body, frame, { start: start.index, end: end.index });
   });
 
-var obj_tmpl = bind_list(
-  text.trie(['class', 'struct']),
-  ws(parse.optional(undefined, var_name)),
-  lang.between(
-    text.character('{'),
-    text.character('}'),
-    ws(parse.eager(parse.many(ws(parse.choice(
-      lang.then(text.trie(['public', 'private']), ws(':')),
-      parse.attempt(fn_def),
-      lang.then(var_decls, ws(semi))
-    )))))),
-  (type, name, lines) => {
-    var publ = type == 'struct';
-    var fields = [];
-    for(var line of lines) {
-      if(line == 'public') publ = true;
-      else if(line == 'private') publ = false;
-      else if(line instanceof ast.Fn){
-        var typ = new ast.TypFn(line.ret, line.params);
-        fields.push(new ast.ObjField(line.name, publ ? 'public' : 'private', typ, line));
-      }
-      else if(line instanceof ast.Seq){
-        for(var decl of line.elems) {
-          fields.push(new ast.ObjField(decl.name, publ ? 'public' : 'private', decl.typ, decl.init));
-        }
-      }
+var constructor_def = (name) => bind_list(
+  lang.then(parse.optional('', text.character('~')), text.string(name)), ws(params), ws(scope),
+  (decon, params, body) => {
+    var frame = {};
+    for(var p of params) {
+      frame[p.name] = p.typ;
     }
-    return new ast.TypObj(name, fields);
+    function countVars(node) {
+      if(node instanceof ast.Decl) {
+        frame[node.name] = node.typ;
+      }
+      return node.apply(countVars);
+    }
+    countVars(body);
+    return new ast.Fn(new ast.TypBase('void'), decon + name, params, body, frame);
   });
+
+// Needs to use 'name' halfway through, so can't use bind_list.
+var obj_tmpl = parse.bind(text.trie(['class', 'struct']),
+  (type) => parse.bind(ws(parse.optional(undefined, var_name)),
+    (name) => parse.bind(
+      lang.between(
+        text.character('{'),
+        text.character('}'),
+        ws(parse.eager(parse.many(ws(parse.choice(
+          lang.then(text.trie(['public', 'private']), ws(':')),
+          parse.attempt(fn_def),
+          parse.attempt(constructor_def(name)),
+          lang.then(var_decls, ws(semi))
+        )))))),
+      (lines) => {
+        var publ = type == 'struct';
+        var fields = [];
+        for(var line of lines) {
+          if(line == 'public') publ = true;
+          else if(line == 'private') publ = false;
+          else if(line instanceof ast.Fn){
+            var typ = new ast.TypFn(line.ret, line.params);
+            fields.push(new ast.ObjField(line.name, publ ? 'public' : 'private', typ, line));
+          }
+          else if(line instanceof ast.Seq){
+            for(var decl of line.elems) {
+              fields.push(new ast.ObjField(decl.name, publ ? 'public' : 'private', decl.typ, decl.init));
+            }
+          }
+        }
+        return parse.always(new ast.TypObj(name, fields));
+      })));
 
 var file = parse.bind(
     parse.eager(parse.many(

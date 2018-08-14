@@ -2,6 +2,75 @@
 
 var ast = require('./ast');
 
+function getTypSize(typ) {
+  if(typ instanceof ast.TypBase) {
+    switch(typ.typ) {
+      case 'string':
+        return 4;
+      default:
+        return 4;
+    }
+  }
+  else if(typ instanceof ast.TypFn) {
+    return 0;
+  }
+  else if(typ instanceof ast.TypPtr) {
+    return 4;
+  }
+  else if(typ instanceof ast.TypArr) {
+    return getTypSize(typ.typ) * typ.size.val;
+  }
+  else if(typ instanceof ast.TypObj) {
+    return typ.fields.reduce(
+      (acc, field) => {
+        if(!(field.typ instanceof ast.TypFn)) {
+          return acc + getTypSize(field.typ);
+        }
+        return acc;
+      }, 0);
+  }
+  else {
+    throw Error('Unsupported type: ' + typ.constructor.name)
+  }
+}
+
+function initMemory(loc, typ, initFunc) {
+  if(typ instanceof ast.TypBase) {
+    switch(typ.typ) {
+      case 'string':
+        return initFunc(loc, typ, '');
+      default:
+        return initFunc(loc, typ, 0);
+    }
+  }
+  else if(typ instanceof ast.TypPtr) {
+    return initFunc(loc, typ, 0);
+  }
+  else if(typ instanceof ast.TypArr) {
+    var ret = [];
+    var elementSize = getTypSize(typ.typ);
+    for(var i = 0; i < typ.size.val; i++) {
+      ret.push(initMemory(loc + i * elementSize, typ.typ, initFunc));
+    }
+    return ret;
+  }
+  else if(typ instanceof ast.TypObj) {
+    ret = {};
+    typ.fields.reduce(
+      (acc, field) => {
+        if(!(field.typ instanceof ast.TypFn)) {
+          ret[field.name] = initMemory(loc + acc, field.typ, initFunc);
+          return acc + getTypSize(field.typ);
+        }
+        return acc;
+      }, 0);
+    return ret;
+  }
+  else {
+    throw Error('Unsupported type: ' + typ.constructor.name)
+  }
+}
+
 function MemoryModel(builtins) {
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView
   // var buffer = new ArrayBuffer(1024);
@@ -44,74 +113,9 @@ function MemoryModel(builtins) {
     return stack[stack.length-1];
   }
 
-  function getTypSize(typ) {
-    if(typ instanceof ast.TypBase) {
-      switch(typ.typ) {
-        case 'string':
-          return 4;
-        default:
-          return 4;
-      }
-    }
-    else if(typ instanceof ast.TypFn) {
-      return 0;
-    }
-    else if(typ instanceof ast.TypPtr) {
-      return 4;
-    }
-    else if(typ instanceof ast.TypArr) {
-      return getTypSize(typ.typ) * typ.size.val;
-    }
-    else if(typ instanceof ast.TypObj) {
-      return typ.fields.reduce(
-        (acc, field) => {
-          if(!(field.typ instanceof ast.TypFn)) {
-            return acc + getTypSize(field.typ);
-          }
-          return acc;
-        }, 0);
-    }
-    else {
-      throw Error('Unsupported type: ' + typ.constructor.name)
-    }
-  }
-
-  function initMemory(loc, typ) {
-    if(typ instanceof ast.TypBase) {
-      switch(typ.typ) {
-        case 'string':
-          setAddress(loc, typ, '');
-        default:
-          setAddress(loc, typ, 0);
-      }
-    }
-    else if(typ instanceof ast.TypPtr) {
-      setAddress(loc, typ, 0);
-    }
-    else if(typ instanceof ast.TypArr) {
-      var elementSize = getTypSize(typ.typ);
-      for(var i = 0; i < typ.size.val; i++) {
-        initMemory(loc + i * elementSize, typ.typ);
-      }
-    }
-    else if(typ instanceof ast.TypObj) {
-      typ.fields.reduce(
-        (acc, field) => {
-          if(!(field.typ instanceof ast.TypFn)) {
-            initMemory(loc + acc, field.typ);
-            return acc + getTypSize(field.typ);
-          }
-          return acc;
-        }, 0);
-    }
-    else {
-      throw Error('Unsupported type: ' + typ.constructor.name)
-    }
-  }
-
   this.malloc = function(typ) {
     var address = generator.next(getTypSize(typ)).value;
-    initMemory(address, typ);
+    initMemory(address, typ, setAddress);
     return address;
   };
 
@@ -141,7 +145,6 @@ function MemoryModel(builtins) {
   }
 
   this.addrOfLValue = function(node) {
-    // console.log("Getting info on:", node)
     console.assert(ast.isReducedLValue(node));
     if(node instanceof ast.Var) {
       var stackFrame = getCurrentStackFrame();
@@ -178,27 +181,18 @@ function MemoryModel(builtins) {
   }
 
   this.valueOfLValue = function(node) {
-    // console.log("Getting value of:", node);
     var addr = this.addrOfLValue(node);
-    // console.log("Address:", addr)
-    // console.log("Memory:", memory)
-    // console.log("Stack:", stack)
-    // console.log("Val", valueAtAddress(addr, node.typ))
     return valueAtAddress(addr, node.typ);
   }
 
   this.setLValue = function(node, val) {
-    // console.log("Setting:", node)
-    // console.log("To be:", val)
-    // console.log(memory)
-    // console.log(stack)
     var addr = this.addrOfLValue(node);
-    // console.log(addr)
     setAddress(addr, node.typ, val);
-    // console.log(memory)
   }
 }
 
 module.exports = {
   MemoryModel: MemoryModel,
+  getTypSize: getTypSize,
+  initMemory: initMemory,
 }

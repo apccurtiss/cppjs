@@ -22,7 +22,7 @@ function compile(preprocessedAst) {
         return cmpl(field);
       });
 
-      return new ast.TypObj(node.name, fields);
+      return new ast.TypObj(node.name, fields, node.constructors);
     }
     // Don't recurse on LValue types - there's no need, and it could go infinite.
     else if(node instanceof ast.Var) {
@@ -125,4 +125,5 @@ module.exports = {
     return new runtime.Program(compiledAst, options || {});
   },
   ast: ast,
+  initMemory: runtime.initMemory,
 };

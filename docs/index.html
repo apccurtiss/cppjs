@@ -2,54 +2,122 @@
 <html lang="en-US">
   <head>
     <meta charset="UTF-8" />
-    <title>C-learn</title>
+    <title>CPP.js</title>
     <link rel="stylesheet" type="text/css" href="./style.css">
-    <!-- <link href="http://visjs.org/dist/vis.css" rel="stylesheet" type="text/css" /> -->
+    <!-- <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"> -->
+    <link rel="stylesheet" type="text/css" href="./lib/fontawesome/css/all.css">
   </head>
   <body>
     <div id="main" class="box vertical">
-      <header class="header box horizontal">
-        <div id="disclaimer" class="menu-item"><b>C-learn.js BETA </b><br/><span id="version">( Version 0.0.1 )</span></div>
-        <button type="button" class="menu-item" id="compile">Compile</button>
-        <button type="button" class="menu-item" id="run" onclick="run()" style="display: none;">Run</button>
-        <button type="button" class="menu-item" id="step" onclick="step()" style="display: none;">Step</button>
-        <button type="button" class="menu-item" id="reset" onclick="reset()" style="display: none;">Reset</button>
-        <table class="menu-item">
-          <tr><td>Program speed</td></tr>
-          <tr><td><input type="range" min="1" max="100" value="50" class="slider" id="animationSpeed" oninput="updateAnimationSpeed(this.value)"></input></td></tr>
-        </table>
+      <header>
+        <!-- <a href="#"><img class="logo" src="static/images/logo.png"></img></a> -->
+        <a href="#"><b class="logo">CPP.js</b></a>
+        <ul class="nav-bar box horizontal">
+          <li><a href="#">About</a></li>
+          <li>
+            <div class="dropdown">
+              <span>Examples</span>
+              <div class="dropdown-content">
+                <ul>
+                  <li><a href="?file=linked-list">Linked List</a></li>
+                  <li><a href="?file=binary-tree">Binary Tree</a></li>
+                </ul>
+              </div>
+            </div>
+          </li>
+          <li><button id="edit">Log In</button></li>
+        </ul>
       </header>
-      <section id="content">
-        <div id="program" class="box vertical">
-          <div id="editor" class="content">int add_two( int x , int y ) {
-  cout << 0;
-  return x + y ;
-}
-
-int add_three( int x , int y , int z ) {
-  cout << 1;
-  return add_two ( add_two ( x , y ) , z ) ;
-}
-
-int main ( ) {
-  {
-    cout << 1;
-    cout << 2;
-  }
-  cout << add_three ( 1 , 2 , 3 ) ;
-}</div>
-          <div id="stdout" style="display: none;" class="content">
-            user@c-learn:~$ ./program<br/>
+      <div class="function-bar">
+        <div class="menu-wrapper left">
+          <div class="function-menu" id="editing-menu">
+            <ul class="box horizontal">
+              <li>
+                <button class="box vertical" onclick="compile()">
+                  <i class="fa fa-cogs"></i>
+                  <span>Compile</span>
+                </button>
+              </li>
+            </ul>
           </div>
         </div>
-        <div id="memory" class="box vertical">
-          <div id="heap" class="content"></div>
-          <div id="stack" class="footer">
-            <div class="function-frame" id="function-frame-template" style="display: none">
-              <button class="function-name active untouched"></button>
-              <div class="function-vars">
-                <div id="function-var-template" style="display: none">
-                  <span class="function-var-type"></span> <span class="function-var-name"></span>: <span class="function-var-value"></span>
+        <div class="menu-wrapper">
+          <div class="function-menu hidden" id="paused-menu">
+            <ul class="box horizontal">
+              <li>
+                <button class="box vertical" onclick="edit()">
+                  <i class="fa fa-edit"></i>
+                  <span>Edit</span>
+                </button>
+              </li>
+              <li>
+                <button class="box vertical" onclick="reset()">
+                  <i class="fa fa-undo"></i>
+                  <span>Reset</span>
+                </button>
+              </li>
+              <li>
+                <button class="box vertical" onclick="run()">
+                  <i class="fa fa-play"></i>
+                  <span>Run</span>
+                </button>
+              </li>
+              <li>
+                <button class="box vertical" onclick="step()">
+                  <i class="fa fa-step-forward"></i>
+                  <span>Step</span>
+                </button>
+              </li>
+            </div>
+          </div>
+          <div class="menu-wrapper">
+            <div class="function-menu hidden" id="running-menu">
+              <li>
+                <button class="box vertical" onclick="pause()">
+                  <i class="fa fa-pause"></i>
+                  <span>Pause</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <section class="box horizontal fill">
+        <div id="editor" class="fill"></div>
+        <div id="dashboard" class="hidden fill">
+          <div class="box vertical">
+            <div class="box horizontal fill">
+              <div class="widget-wrapper">
+                <div class="widget-label">
+                  Console
+                </div>
+                <div class="widget-contents">
+                  <div id="stdout" class="console">
+                    <span>user@c-learn:~$ ./program</span><br/>
+                  </div>
+                </div>
+              </div>
+              <div class="widget-wrapper">
+                <div class="widget-label">
+                  Call Stack
+                </div>
+                <div class="widget-contents">
+                  <ul id="stack-frames">
+                    <li class="stack-frame active template">
+                      <span class="name"></span>
+                      <ul class="stack-frame-vars">
+                      </ul>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div class="widget-wrapper double">
+              <div class="widget-label">
+                Heap
+              </div>
+              <div class="widget-contents">
+                <div id="heap-canvas">
                 </div>
               </div>
             </div>
@@ -57,12 +125,13 @@ int main ( ) {
         </div>
       </section>
       <footer>
+        &copy; 2018 Alexander Curtiss
       </footer>
     </div>
-    <script src="./jquery-3.1.1.min.js"></script>
-    <script src="./svg.min.js"></script>
-    <script src="./ace-src/ace.js" type="text/javascript" charset="utf-8"></script>
-    <script type="text/javascript" src="c-learn.js"></script>
+    <script type="text/javascript" src="jquery-3.1.1.min.js"></script>
+    <script type="text/javascript" src="svg.min.js"></script>
+    <script type="text/javascript" src="lib/ace-src/ace.js" charset="utf-8"></script>
+    <script type="text/javascript" src="cpp.js"></script>
     <script type="text/javascript" src="heap.js"></script>
     <script type="text/javascript" src="script.js"></script>
   </body>

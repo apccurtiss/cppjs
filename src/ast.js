@@ -101,7 +101,7 @@ module.exports = {
   Deref: function(e1, e1typ) {
     this.e1 = e1;
     this.e1typ = e1typ;
-    this.asString = () => '*' + e1.asString();
+    this.asString = () => '*' + this.e1.asString();
 
     this.apply = function(f){ return new module.exports.Deref(f(this.e1), this.e1typ ? f(this.e1typ) : this.e1typ); }
     this.walk = function(f){
@@ -149,6 +149,7 @@ module.exports = {
   Lit: function(typ, val) {
     this.typ = typ;
     this.val = val;
+    this.asString = () => val;
 
     this.apply = function(f){ return this; }
     this.walk = function(f){ return this; };
@@ -157,8 +158,6 @@ module.exports = {
   Call: function(fn, args, position) {
     this.fn = fn;
     this.args = args;
-    // Call is the one AST node that stores it's own position, because it's
-    // position is set during the function call step.
     this.position = position;
 
     this.apply = function(f){ return new module.exports.Call(f(fn), this.args.map(f), this.position); }
@@ -182,30 +181,23 @@ module.exports = {
     };
   },
 
-  Fn: function(ret, name, params, body, frame) {
+  Fn: function(ret, name, params, body, frame, position) {
     this.ret = ret;
     this.name = name;
     this.params = params;
     this.body = body;
     this.frame = frame;
+    this.position = position;
 
     this.apply = function(f){
       var newFrame = {};
       for(var v in this.frame) {
         newFrame[v] = f(this.frame[v]);
       }
-      return new module.exports.Fn(this.ret, this.name, this.params.map(f), f(this.body), newFrame);
+      return new module.exports.Fn(f(this.ret), this.name, this.params.map(f), f(this.body), newFrame, this.position);
     }
     this.walk = function(f){ f(this.ret); f(this.name); this.params.map(f); f(this.body); return this; };
   },
-
-  // Method: function(objTyp, fn) {
-  //   this.objTyp = objTyp;
-  //   this.fn = fn;
-  //
-  //   this.apply = function(f){ return new module.exports.Method(f(this.objTyp), f(this.fn)); };
-  //   this.walk = function(f){ f(this.objTyp); f(this.fn); return this; };
-  // },
 
   Typedef: function(name, typ) {
     this.name = name;
@@ -213,22 +205,6 @@ module.exports = {
 
     this.apply = function(f){ return new module.exports.Typedef(this.name, f(this.typ)); };
     this.walk = function(f){ f(this.typ); return this; };
-  },
-
-  ObjField: function(name, visibility, typ, init) {
-    this.name = name;
-    this.visibility = visibility;
-    this.typ = typ;
-    this.init = init;
-
-    this.apply = function(f){ return new module.exports.ObjField(this.name, this.visibility, f(this.typ), this.init ? f(this.init) : this.init) };
-    this.walk = function(f){
-      f(this.typ);
-      if(this.init) {
-        f(this.init);
-      }
-      return this;
-    };
   },
 
   Return: function(e1) {
@@ -284,6 +260,23 @@ module.exports = {
 
     this.apply = function(f){ return new module.exports.Steppoint(this.position, f(this.body)); }
     this.walk = function(f){ f(this.body); return this; }
+  },
+
+
+  ObjField: function(name, visibility, typ, init) {
+    this.name = name;
+    this.visibility = visibility;
+    this.typ = typ;
+    this.init = init;
+
+    this.apply = function(f){ return new module.exports.ObjField(this.name, this.visibility, f(this.typ), this.init ? f(this.init) : this.init) };
+    this.walk = function(f){
+      f(this.typ);
+      if(this.init) {
+        f(this.init);
+      }
+      return this;
+    };
   },
 
   Builtin: function(f) {
