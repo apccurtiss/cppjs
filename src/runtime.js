@@ -23,6 +23,7 @@ function Program(compiled_code, options) {
   this.onPositionChange = deferErrors(options.onPositionChange);
   this.errorFormat = options.errorFormat || 'cjs';
   this.types = compiled_code.types;
+  this.steppoints = compiled_code.steppoints;
 
   var functions = {
     '!print': new ast.Builtin((p) => {
@@ -275,6 +276,7 @@ function Program(compiled_code, options) {
   }
 
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
+    this.onPositionChange(null);
     return null;
   });
 

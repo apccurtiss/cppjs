@@ -1,3 +1,9 @@
+var state = {
+  program: undefined,
+  steppoints: [],
+  currentState: 'editing',
+}
+
 /*
  *  Editor init
  */
@@ -111,6 +117,32 @@ editor.setShowPrintMargin(false);
 editor.setValue(init_code, -1) // moves cursor to the start
 var positionMarkers = [];
 
+var handler = function(e) {
+  var editor = e.editor;
+  var pos = editor.getCursorPosition();
+  for(steppoint of state.steppoints) {
+    if(steppoint.range.start.row <= pos.row &&
+      steppoint.range.start.column <= pos.column &&
+      steppoint.range.end.row >= pos.row &&
+      steppoint.range.end.column >= pos.column) {
+      toggleBreakpoint(steppoint);
+      return;
+    }
+  }
+}
+editor.on("click", handler)
+
+function toggleBreakpoint(steppoint) {
+  if(steppoint.breakpoint) {
+    editor.session.removeMarker(steppoint.breakpoint);
+    steppoint.breakpoint = null;
+  }
+  else {
+    var marker = editor.session.addMarker(steppoint.range, 'breakpoint', 'word');
+    steppoint.breakpoint = marker;
+  }
+}
+
 /*
  *  Graphical heap init
  */
@@ -183,6 +215,11 @@ function onDynamicAllocation(typ, loc) {
 function onPositionChange(position) {
   while(positionMarkers.length) editor.session.removeMarker(positionMarkers.pop());
   if(!position) return;
+  for(var steppoint of state.steppoints) {
+    if(steppoint.breakpoint && steppoint.startIndex == position.start && steppoint.endIndex == position.end) {
+      changeState('paused');
+    }
+  }
   var start = editor.session.doc.indexToPosition(position.start, 0);
   var end = editor.session.doc.indexToPosition(position.end, 0);
   positionMarkers.push(editor.session.addMarker(Range.fromPoints(start, end), 'current-runtime-position', 'word'));
@@ -199,11 +236,6 @@ var options = {
   onDynamicAllocation: onDynamicAllocation,
   onPrint: onPrint,
   onPositionChange: onPositionChange,
-}
-
-var state = {
-    program: undefined,
-    currentState: 'editing'
 }
 
 function changeMenuState(...buttonStates) {
@@ -259,22 +291,17 @@ function compile() {
   changeState('paused');
   setTimeout(() => editor.resize(), 800);
   state.program = compiler.compile(editor.getValue(), options);
+  for(steppoint of state.program.steppoints) {
+    var start = editor.session.doc.indexToPosition(steppoint.start, 0);
+    var end = editor.session.doc.indexToPosition(steppoint.end, 0);
+    var range = Range.fromPoints(start, end);
+    var marker = editor.session.addMarker(range, 'steppoint', 'word');
+    state.steppoints.push({ startIndex: steppoint.start, endIndex: steppoint.end, range: range, marker: marker, breakpoint: null });
+  }
 }
 
-var positionMarker = undefined;
 function step() {
-  editor.session.removeMarker(positionMarker);
-  if(!state.program.step()) return false;
-  if(state.program.position == undefined) return true;
-  // var start = editor.session.doc.indexToPosition(state.program.position.start, 0);
-  // var end = editor.session.doc.indexToPosition(state.program.position.end, 0);
-  // positionMarker = editor.session.addMarker(Range.fromPoints(start, end), 'current-runtime-position', 'word');
-  return true;
-}
-
-function addBreakpoint() {
-  markerPos = editor.session.addMarker(
-    new Range(startRow, startCol, endRow, endCol), 'ace_active-line', 'word');
+  return state.program.step();
 }
 
 var interval = 500;

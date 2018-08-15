@@ -2766,6 +2766,7 @@ function Program(compiled_code, options) {
   this.onPositionChange = deferErrors(options.onPositionChange);
   this.errorFormat = options.errorFormat || 'cjs';
   this.types = compiled_code.types;
+  this.steppoints = compiled_code.steppoints;
 
   var functions = {
     '!print': new ast.Builtin((p) => {
@@ -3018,6 +3019,7 @@ function Program(compiled_code, options) {
   }
 
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
+    this.onPositionChange(null);
     return null;
   });
 
@@ -3322,11 +3324,16 @@ var pp = require('./preprocesser');
 
 function compile(preprocessedAst) {
   var fns = [];
+  var steppoints = [];
   var typecheckedAst = typechecker.typecheck(preprocessedAst);
 
   function cmpl(node) {
     if(node instanceof ast.TypPtr) {
       return node;
+    }
+    else if(node instanceof ast.Steppoint) {
+      steppoints.push(node.position);
+      return node.apply(cmpl);
     }
     else if(node instanceof ast.TypObj) {
       var fields = node.fields.map((field) => {
@@ -3422,6 +3429,7 @@ function compile(preprocessedAst) {
   return {
     ast: compiledAst,
     functions: fns,
+    steppoints: steppoints,
   }
 }
 

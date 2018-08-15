@@ -8,11 +8,16 @@ var pp = require('./preprocesser');
 
 function compile(preprocessedAst) {
   var fns = [];
+  var steppoints = [];
   var typecheckedAst = typechecker.typecheck(preprocessedAst);
 
   function cmpl(node) {
     if(node instanceof ast.TypPtr) {
       return node;
+    }
+    else if(node instanceof ast.Steppoint) {
+      steppoints.push(node.position);
+      return node.apply(cmpl);
     }
     else if(node instanceof ast.TypObj) {
       var fields = node.fields.map((field) => {
@@ -108,6 +113,7 @@ function compile(preprocessedAst) {
   return {
     ast: compiledAst,
     functions: fns,
+    steppoints: steppoints,
   }
 }
 
