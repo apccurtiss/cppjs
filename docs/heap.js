@@ -14,9 +14,10 @@ function MemDrawing(canvas) {
           baseHeight: 30,
         };
 
-        console.log(draw);
   var timer = undefined,
-      dragging = undefined;
+      dragging = undefined,
+      nodes = {},
+      edges = [];
 
   function Node(component, loc) {
     var addr = draw.text('0x' + loc.toString(16)).font({anchor: 'left', family: 'monospace'}).fill('#fff').move(5, 0).opacity(0);
@@ -47,6 +48,12 @@ function MemDrawing(canvas) {
         background.animate(200, '<', 0).size(componentSVG.bbox().width, componentSVG.bbox().height)
         componentSVG.animate(200, '<', 200).opacity(1)
       }
+      // Update the edges for the ~0.4 seconds of animation
+      var timesRun = 0;
+      var interval = setInterval(function(){
+        if(timesRun++ == 24) clearInterval(interval);
+        updateEdges();
+      }, 17);
     }
     this.component = component;
     this.background = background;
@@ -144,7 +151,6 @@ function MemDrawing(canvas) {
         var text = makeLabel(field.name);//draw.text(field.name + ': ').font({anchor: 'left', family: 'sans'}).fill('#fff');
         maxTextSize = text.bbox().width > maxTextSize ? text.bbox().width : maxTextSize;
         var newComponent = buildComponent(field.typ);
-        // var text_offset = verticalCenterOffset(text, newComponent.svg);
         var newField = draw.group()
           .add(newComponent.svg.move(spacing, text.bbox().height - baseBorder))
           .add(text)
@@ -168,9 +174,6 @@ function MemDrawing(canvas) {
       throw Error('Unknown type: ' + typ.constructor.name)
     }
   }
-
-  var nodes = {};
-  var edges = [];
 
   function containingNodeLookup(lVal) {
     if(lVal instanceof ast.Deref) {
@@ -332,8 +335,6 @@ function MemDrawing(canvas) {
   }
 
   function drawLine(sourceSVG, targetSVG) {
-    // console.log(sourceSVG)
-    // console.log(targetSVG)
     var lineStart = getGlobalPosition(sourceSVG);
     var targetCenter = getGlobalPosition(targetSVG);
     var lineEnd = closestPointOnBBoxEdge(lineStart.x, lineStart.y, targetCenter.x, targetCenter.y, targetSVG.bbox(), 5);
@@ -374,23 +375,32 @@ function MemDrawing(canvas) {
     }
   }
 
+  function updateNodes() {
+    var max = 0;
+    for(var i in nodes) {
+      for(var j in nodes) {
+        if(i < j) {
+          var force = applyForce(i, j);
+          max = Math.max(force, max);
+        }
+      }
+    }
+    return max;
+  }
+
+  function updateEdges() {
+    for(var e of edges) {
+      e.svg.remove();
+      e.svg = drawLine(e.source, e.target);
+    }
+  }
+
   function startForce() {
     const stopthreshold = 2;
     if(!timer) {
       timer = setInterval(function(){
-        var max = 0;
-        for(var i in nodes) {
-          for(var j in nodes) {
-            if(i < j) {
-              var force = applyForce(i, j);
-              max = Math.max(force, max);
-            }
-          }
-        }
-        for(var e of edges) {
-          e.svg.remove();
-          e.svg = drawLine(e.source, e.target);
-        }
+        var max = updateNodes();
+        updateEdges();
         if(max < stopthreshold) {
           clearInterval(timer);
           timer = undefined;
@@ -401,6 +411,9 @@ function MemDrawing(canvas) {
 
   function clear() {
     draw.clear();
+    edges = [];
+    nodes = [];
+    lastAdded = undefined;
   }
 
   this.clear = clear;

@@ -164,29 +164,23 @@ li:hover .dropdown .dropdown-content {
   padding: 10px;
 }
 
-.menu-wrapper {
-  transition: 1s;
-  width: fit-content;
-  float: left;
-}
-
-.function-menu li {
+.function-bar li {
   display: flex;
   padding: 5px 15px;
   float: left;
   height: 100%;
 }
 
-.function-menu button i {
+.function-bar button i {
   font-size: 14px;
   width: 100%;
 }
 
-.function-menu button:focus {
+.function-bar button:focus {
   outline: none;
 }
 
-.function-menu button {
+.function-bar button {
   background-color: rgba(0, 0, 0, 0);
   border: none;
   color: white;
@@ -194,12 +188,10 @@ li:hover .dropdown .dropdown-content {
   cursor: pointer;
 }
 
-.function-menu.hidden button {
-  cursor: default;
-}
-
-.function-menu.hidden {
+.function-bar li.hidden {
   opacity: .1;
+  pointer-events: none;
+  cursor: default;
 }
 
 /* Editor */
@@ -367,6 +359,34 @@ footer {
   background: #984b43;
   margin: 0;
   padding: 0;
+}
+
+/* Slide bar inputs */
+.slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 10px;
+    background: #d3d3d3;
+    outline: none;
+    border-radius: 10px;
+}
+
+.slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 25px;
+    height: 10px;
+    background: #1b8db2;
+    border-radius: 10px;
+    cursor: pointer;
+}
+
+.slider::-moz-range-thumb {
+    width: 25px;
+    height: 10px;
+    background: #1b8db2;
+    border-radius: 10px;
+    cursor: pointer;
 }
 
 /* Palettes */

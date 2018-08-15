@@ -195,11 +195,6 @@ function Program(compiled_code, options) {
             return next(fn.f.apply(null, [r]))
           });
         }
-        else if(fn instanceof ast.Lit){
-          console.assert(fn.typ instanceof ast.TypPtr && fn.typ.typ instanceof ast.TypObj);
-          console.log(current);
-          Ready
-        }
         else {
           var args = current.args;
           if(v1 instanceof ast.MemberAccess) {
@@ -214,8 +209,16 @@ function Program(compiled_code, options) {
             });
           }, (_) => {
             // Give state information to user
+            if(v1 instanceof ast.MemberAccess) {
+              var fnName = v1.e1typ.name + '::' + fn.name;
+              var argList = fn.params.slice(1).map((p) => argVals[p.name]);
+            }
+            else {
+              var fnName = fn.name;
+              var argList = fn.params.map((p) => argVals[p.name]);
+            }
             this.onPositionChange(current.position);
-            this.onFnCall(fn.name, fn.params.map((p) => argVals[p.name]), fn.frame, fn.position);
+            this.onFnCall(fnName, argList, fn.frame, fn.position);
             for(var a in argVals) {
               this.onAssign(new ast.Var(a), argVals[a]);
             }

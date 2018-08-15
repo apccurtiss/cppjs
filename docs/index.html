@@ -25,62 +25,54 @@
               </div>
             </div>
           </li>
-          <li><button id="edit">Log In</button></li>
+          <li><button id="login">Log In</button></li>
         </ul>
       </header>
       <div class="function-bar">
-        <div class="menu-wrapper left">
-          <div class="function-menu" id="editing-menu">
-            <ul class="box horizontal">
-              <li>
-                <button class="box vertical" onclick="compile()">
-                  <i class="fa fa-cogs"></i>
-                  <span>Compile</span>
-                </button>
-              </li>
-            </ul>
-          </div>
-        </div>
-        <div class="menu-wrapper">
-          <div class="function-menu hidden" id="paused-menu">
-            <ul class="box horizontal">
-              <li>
-                <button class="box vertical" onclick="edit()">
-                  <i class="fa fa-edit"></i>
-                  <span>Edit</span>
-                </button>
-              </li>
-              <li>
-                <button class="box vertical" onclick="reset()">
-                  <i class="fa fa-undo"></i>
-                  <span>Reset</span>
-                </button>
-              </li>
-              <li>
-                <button class="box vertical" onclick="run()">
-                  <i class="fa fa-play"></i>
-                  <span>Run</span>
-                </button>
-              </li>
-              <li>
-                <button class="box vertical" onclick="step()">
-                  <i class="fa fa-step-forward"></i>
-                  <span>Step</span>
-                </button>
-              </li>
+        <ul class="box horizontal">
+          <li id="compile">
+            <button class="box vertical" onclick="compile()">
+              <i class="fa fa-cogs"></i>
+              <span>Compile</span>
+            </button>
+          </li>
+          <li id="edit" class="hidden">
+            <button class="box vertical" onclick="edit()">
+              <i class="fa fa-edit"></i>
+              <span>Edit</span>
+            </button>
+          </li>
+          <li id="reset" class="hidden">
+            <button class="box vertical" onclick="reset()">
+              <i class="fa fa-undo"></i>
+              <span>Reset</span>
+            </button>
+          </li>
+          <li id="run" class="hidden">
+            <button class="box vertical" onclick="run()">
+              <i class="fa fa-play"></i>
+              <span>Run</span>
+            </button>
+          </li>
+          <li id="step" class="hidden">
+            <button class="box vertical" onclick="step()">
+              <i class="fa fa-step-forward"></i>
+              <span>Step</span>
+            </button>
+          </li>
+          <li id="pause" class="hidden">
+            <button class="box vertical" onclick="pause()">
+              <i class="fa fa-pause"></i>
+              <span>Pause</span>
+            </button>
+          </li>
+          <li id="speed" class="hidden">
+            <div class="box vertical">
+              <input type="range" id="animationSpeedSlider" class="slider" min="0" max="100" oninput="updateAnimationSpeed(this.value)">
+              <span>Speed</span>
             </div>
-          </div>
-          <div class="menu-wrapper">
-            <div class="function-menu hidden" id="running-menu">
-              <li>
-                <button class="box vertical" onclick="pause()">
-                  <i class="fa fa-pause"></i>
-                  <span>Pause</span>
-                </button>
-              </li>
-            </ul>
-          </div>
-        </div>
+          </li>
+        </ul>
       </div>
       <section class="box horizontal fill">
         <div id="editor" class="fill"></div>

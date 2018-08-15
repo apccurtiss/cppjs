@@ -116,22 +116,6 @@ var positionMarkers = [];
  */
 
 var heap = new MemDrawing('heap-canvas');
-// var intTyp = new ast.TypBase('int');
-// var int = new ast.Lit(intTyp, 42);
-// var arrTyp = new ast.TypArr(intTyp, 3);
-// var arr = new ast.Lit(arrTyp, undefined);
-// var objTyp = new ast.TypObj('node', [
-//   new ast.ObjField('x', 'public', intTyp, undefined),
-//   new ast.ObjField('arr', 'private', arrTyp, undefined),
-//   new ast.ObjField('y', 'public', intTyp, undefined),
-//   new ast.ObjField('arr2', 'public', arrTyp, undefined),
-// ]);
-// var obj = new ast.Lit(objTyp, undefined);
-// var node1 = heap.addNode(1, intTyp);
-// var node2 = heap.addNode(42, arrTyp);
-// var node3 = heap.addNode(123, objTyp);
-// heap.deleteNode(1);
-// heap.updateNode(new ast.IndexAccess(new ast.MemberAccess(new ast.Deref(new ast.Lit(new ast.TypPtr(intTyp), 123)), 'arr'), new ast.Lit(intTyp, 1)), 42);
 
 /*
  *  C-learn.js init
@@ -151,7 +135,6 @@ function onAssign(v, val) {
 
 var frameList = document.getElementById('stack-frames');
 function onFnCall(name, args, frame, position) {
-  console.log("Position:", position)
   if(position) {
     var start = editor.session.doc.indexToPosition(position.start, 0);
     var end = editor.session.doc.indexToPosition(position.end, 0);
@@ -161,26 +144,7 @@ function onFnCall(name, args, frame, position) {
   var newFrame = document.getElementsByClassName('template')[0];
   var newTemplate = newFrame.cloneNode(true);
   frameList.prepend(newTemplate);
-  // newFrame.on('click', (e) => {
-  //   e.target.classList.toggle('active');
-  //   e.target.classList.remove('untouched');
-  //
-  //   var panel = e.target.nextElementSibling;
-  //   if (panel.style.display == 'none') {
-  //     panel.style.display = 'block';
-  //   } else {
-  //     panel.style.display = 'none';
-  //   }
-  // });
-  //
-  // var frameWalker = currentFrame;
-  // while(frameWalker) {
-  //   var frame_button = frameWalker.dom.children(':first');
-  //   if(frame_button.hasClass('untouched') && frame_button.hasClass('active')) {
-  //     frame_button.click();
-  //   }
-  //   frameWalker = frameWalker.prev;
-  // }
+
   var argStr = '(' + args.join(', ') + ')'
   newFrame.getElementsByClassName('name')[0].innerHTML = name + argStr;
   // var vars = {};
@@ -228,7 +192,6 @@ function onPrint(text) {
   document.getElementById('stdout').innerHTML += text.replace('\n', '<br/>');
 }
 
-
 var options = {
   onAssign: onAssign,
   onFnCall: onFnCall,
@@ -238,40 +201,41 @@ var options = {
   onPositionChange: onPositionChange,
 }
 
-var program = undefined,
-    editing = true,
-    running = false;
-function changeState(state) {
-  switch(state) {
+var state = {
+    program: undefined,
+    currentState: 'editing'
+}
+
+function changeMenuState(...buttonStates) {
+  var buttonNames = ['compile', 'edit', 'reset', 'run', 'step', 'pause', 'speed'];
+
+  for(var i in buttonStates) {
+    var classList = document.getElementById(buttonNames[i]).classList;
+    if(buttonStates[i]) classList.remove('hidden');
+    else classList.add('hidden')
+  }
+}
+
+function changeState(newState) {
+  state.currentState = newState;
+  switch(newState) {
     case 'editing':
-      editing = true;
-      running = false;
+      document.getElementById('dashboard').classList.add('hidden');
       editor.setReadOnly(false);
       editor.setHighlightActiveLine(true);
-      document.getElementById('editing-menu').classList.remove('hidden');
-      document.getElementById('paused-menu').classList.add('hidden');
-      document.getElementById('running-menu').classList.add('hidden');
-      document.getElementById('dashboard').classList.add('hidden');
+      changeMenuState(true, false, false, false, false, false, false);
       break
     case 'paused':
-      editing = false;
-      running = false;
+      document.getElementById('dashboard').classList.remove('hidden');
       editor.setReadOnly(true);
       editor.setHighlightActiveLine(false);
-      document.getElementById('dashboard').classList.remove('hidden');
-      document.getElementById('editing-menu').classList.add('hidden');
-      document.getElementById('paused-menu').classList.remove('hidden');
-      document.getElementById('running-menu').classList.add('hidden');
+      changeMenuState(false, true, true, true, true, false, true);
       break
     case 'running':
-      editing = false;
-      running = true;
+      document.getElementById('dashboard').classList.remove('hidden');
       editor.setReadOnly(true);
       editor.setHighlightActiveLine(false);
-      document.getElementById('dashboard').classList.remove('hidden');
-      document.getElementById('editing-menu').classList.add('hidden');
-      document.getElementById('paused-menu').classList.add('hidden');
-      document.getElementById('running-menu').classList.remove('hidden');
+      changeMenuState(false, true, true, false, false, true, true);
       break
   }
 }
@@ -283,7 +247,7 @@ function clearState() {
     currentFrame.dom.remove();
     currentFrame = currentFrame.prev;
   }
-  program = compiler.compile(editor.getValue(), options);
+  state.program = compiler.compile(editor.getValue(), options);
 }
 
 function edit() {
@@ -294,16 +258,16 @@ function edit() {
 function compile() {
   changeState('paused');
   setTimeout(() => editor.resize(), 800);
-  program = compiler.compile(editor.getValue(), options);
+  state.program = compiler.compile(editor.getValue(), options);
 }
 
 var positionMarker = undefined;
 function step() {
   editor.session.removeMarker(positionMarker);
-  if(!program.step()) return false;
-  if(program.position == undefined) return true;
-  // var start = editor.session.doc.indexToPosition(program.position.start, 0);
-  // var end = editor.session.doc.indexToPosition(program.position.end, 0);
+  if(!state.program.step()) return false;
+  if(state.program.position == undefined) return true;
+  // var start = editor.session.doc.indexToPosition(state.program.position.start, 0);
+  // var end = editor.session.doc.indexToPosition(state.program.position.end, 0);
   // positionMarker = editor.session.addMarker(Range.fromPoints(start, end), 'current-runtime-position', 'word');
   return true;
 }
@@ -317,7 +281,7 @@ var interval = 500;
 function run() {
   changeState('running');
   (function stepInterval() {
-    if(running) {
+    if(state.currentState == 'running') {
       if(step()) {
         setTimeout(stepInterval, interval);
       }
@@ -335,12 +299,11 @@ function reset() {
 }
 
 function updateAnimationSpeed(value) {
-  interval = (10000 - (value * value)) / 10;
+  interval = (101 - value) * 10;
 }
 
 function init() {
-  updateAnimationSpeed($('#animationSpeed').val());
-  // compile()
+  updateAnimationSpeed(document.getElementById('animationSpeedSlider').value);
 }
 
 init();
