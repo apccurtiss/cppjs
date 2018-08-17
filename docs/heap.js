@@ -2,25 +2,29 @@ var compiler = require('compiler');
 var ast = compiler.ast;
 var initMemory = compiler.initMemory;
 
-function MemDrawing(canvas) {
+function Heap(canvas) {
   const draw = SVG(canvas),
         globalBackground = draw.rect('100%', '100%').fill('#222'),
-        edgeSVG = draw.group(),
         options = {
-          restingDistance: 20,
+          repulsionDistance: 20,
+          attractionDistance: 40,
           forceConstant: 0.4,
           minLabelWidth: 30,
           baseWidth: 50,
           baseHeight: 30,
         };
 
-  var timer = undefined,
+  var edgeSVG = draw.group(),
+      timer = undefined,
       dragging = undefined,
+      namedVars = {},
       nodes = {},
+      ghostTargets = {},
       edges = [];
 
   function Node(component, loc) {
-    var addr = draw.text('0x' + loc.toString(16)).font({anchor: 'left', family: 'monospace'}).fill('#fff').move(5, 0).opacity(0);
+    this.id = '0x' + loc.toString(16);
+    var addr = draw.text(this.id).font({anchor: 'left', family: 'monospace'}).fill('#fff').move(5, 0).opacity(0);
     var componentSVG = component.svg.move(0, addr.bbox().height).opacity(0)
     var background = draw.rect(50, 1).radius(10).attr({ fill: '#1b8db2' });
     var expandIcon = undefined;
@@ -53,12 +57,40 @@ function MemDrawing(canvas) {
       var interval = setInterval(function(){
         if(timesRun++ == 24) clearInterval(interval);
         updateEdges();
+        updateNodes();
+        // startForce();
       }, 17);
     }
     this.component = component;
     this.background = background;
     this.collapsed = true;
-    this.edges = [];
+    this.connections = [];
+    var ghosts = [];
+    this.addGhost = function(name) {
+      var ghost = generateGhostPointer(name);
+      svg.add(ghost);
+      var bbox = ghost.bbox();
+      var h = (background.bbox().width / 2) - (bbox.width / 2);
+      var v = -bbox.height - 5;
+      for(var existingGhost of ghosts) {
+        v -= existingGhost.svg.bbox().height + 5;
+      }
+      ghost.move(0, v);
+      ghosts.push({ svg: ghost, name: name });
+    }
+    this.removeGhost = function(name) {
+      for(var i in ghosts) {
+        if(ghosts[i].name == name) {
+          var removedHeight = ghosts[i].svg.bbox().height + 5;
+          ghosts[i].svg.remove()
+          var removed = ghosts.splice(i, 1);
+          break;
+        }
+      }
+      for(var j = i; j < ghosts.length; j++) {
+        ghosts[i].svg.move(0, -removedHeight);
+      }
+    }
     this.svg = svg
       .on('mousedown', onMouseDown)
       .on('dblclick', toggleCollapsed)
@@ -66,7 +98,7 @@ function MemDrawing(canvas) {
       .on('mouseleave', onMouseUp)
       .on('mousemove', onMouseMove);
 
-    toggleCollapsed();
+    // toggleCollapsed();
   }
 
   function getColor(node) {
@@ -84,6 +116,18 @@ function MemDrawing(canvas) {
 
   function horizontalCenterOffset(text, container) {
     return (container.bbox().width / 2) - (text.bbox().width / 2);
+  }
+
+  function generateGhostPointer(name) {
+    var newStackGhost = draw.rect(options.baseWidth, options.baseHeight).radius(10).attr({ fill: '#005774' });
+    var text = draw.text(name).font({anchor: 'middle', family: 'monospace'}).fill('#fff');
+    var text_offset = verticalCenterOffset(text, newStackGhost);
+    var hCenter = options.baseWidth / 2;
+    var arrow = draw.polygon([[hCenter - 5, options.baseHeight - 1], [hCenter + 5, options.baseHeight - 1], [hCenter, options.baseHeight + 6]]).fill('#005774');
+    return draw.group().add(newStackGhost)
+        .add(arrow)
+        .add(text.move(options.baseWidth/2, text_offset))
+        .opacity(0.4);
   }
 
   function makeLabel(text) {
@@ -141,8 +185,7 @@ function MemDrawing(canvas) {
       }
     }
     else if (typ instanceof ast.TypObj) {
-      var borderWidth = 10,
-          spacing = 5,
+      var borderWidth = 4,
           ret = draw.group(),
           maxTextSize = 0,
           maxWidth = 0, h = borderWidth,
@@ -152,16 +195,16 @@ function MemDrawing(canvas) {
         maxTextSize = text.bbox().width > maxTextSize ? text.bbox().width : maxTextSize;
         var newComponent = buildComponent(field.typ);
         var newField = draw.group()
-          .add(newComponent.svg.move(spacing, text.bbox().height - baseBorder))
+          .add(newComponent.svg.move(borderWidth, text.bbox().height - baseBorder))
           .add(text)
           .move(borderWidth, h);
         var bbox = newField.bbox();
-        h += bbox.height + spacing;
+        h += bbox.height + borderWidth;
         maxWidth = bbox.width > maxWidth ? bbox.width : maxWidth;
         ret.add(newField);
         children[field.name] = newComponent;
       }
-      var background = draw.rect(maxWidth + 2 * borderWidth, h + borderWidth).stroke('#1b8db2').radius(10).attr({ fill: getColor(typ) });
+      var background = draw.rect(maxWidth + 2 * borderWidth, h).stroke('#1b8db2').radius(10).attr({ fill: getColor(typ) });
       ret.add(background);
       background.back();
       return {
@@ -175,10 +218,60 @@ function MemDrawing(canvas) {
     }
   }
 
+  function isStackVar(lVal) {
+    if(lVal instanceof ast.Deref) {
+      if(lVal.e1 instanceof ast.Lit) {
+        return lVal.e1.val > 5000;
+      }
+      if(lVal.e1 instanceof ast.Var) {
+        return namedVars[lVal.e1.name] > 5000;
+      }
+      return isStackVar(lVal.e1);
+    }
+    else if(lVal instanceof ast.MemberAccess) {
+      return isStackVar(lVal.e1);
+    }
+    else if(lVal instanceof ast.IndexAccess) {
+      return isStackVar(lVal.e1);
+    }
+    else if(lVal instanceof ast.Var) {
+      return true;
+    }
+    else {
+      throw Error('Location was not valid lvalue. Must be a variable, dereference, member access, or index access.')
+    }
+  }
+
+  function isPtr(lVal) {
+    if(lVal instanceof ast.Deref) {
+      return lVal.e1typ.typ instanceof ast.TypPtr;
+    }
+    else if(lVal instanceof ast.MemberAccess) {
+      for(var field of lVal.e1typ.fields) {
+        if(field.name == lVal.field && field.typ instanceof ast.TypPtr) {
+          return true;
+        }
+      }
+      return false;
+    }
+    else if(lVal instanceof ast.IndexAccess) {
+      return lVal.e1typ instanceof ast.TypPtr;
+    }
+    else if(lVal instanceof ast.Var) {
+      return lVal.typ == undefined || lVal.typ instanceof ast.TypPtr;
+    }
+    else {
+      throw Error('Location was not valid lvalue. Must be a variable, dereference, member access, or index access.')
+    }
+  }
+
   function containingNodeLookup(lVal) {
     if(lVal instanceof ast.Deref) {
       if(lVal.e1 instanceof ast.Lit) {
         return nodes[lVal.e1.val];
+      }
+      if(lVal.e1 instanceof ast.Var) {
+        return nodes[namedVars[lVal.e1.name]];
       }
       return containingNodeLookup(lVal.e1);
     }
@@ -197,6 +290,9 @@ function MemDrawing(canvas) {
     if(lVal instanceof ast.Deref) {
       if(lVal.e1 instanceof ast.Lit) {
         return nodes[lVal.e1.val].component;
+      }
+      if(lVal.e1 instanceof ast.Var) {
+        return nodes[namedVars[lVal.e1.name]].component;
       }
       return componentLookup(lVal.e1);
     }
@@ -233,8 +329,8 @@ function MemDrawing(canvas) {
   function addNode(loc, typ) {
     var component = buildComponent(typ);
     var node = new Node(component, loc);
-    if(lastAdded) node.svg.move(lastAdded.svg.x() + lastAdded.svg.bbox().width + options.restingDistance, lastAdded.svg.y());
-    else node.svg.move(40, 40);
+    if(lastAdded) node.svg.move(lastAdded.svg.x() + lastAdded.background.bbox().width + options.repulsionDistance + 5, lastAdded.svg.y());
+    else node.svg.move(10, 100);
     nodes[loc] = lastAdded = node;
     startForce();
     return node;
@@ -257,8 +353,11 @@ function MemDrawing(canvas) {
     var w = (sBackground.bbox().width + tBackground.bbox().width) / 2;
     var h = (sBackground.bbox().height + tBackground.bbox().height) / 2;
 
-    var vDist = Math.abs(sy - ty), minVDist = h + options.restingDistance;
-    var hDist = Math.abs(sx - tx), minHDist = w + options.restingDistance;
+    var vDist = Math.abs(sy - ty),
+        hDist = Math.abs(sx - tx);
+
+    var minVDist = h + options.repulsionDistance,
+        minHDist = w + options.repulsionDistance;
 
     var hforce = vforce = 0;
 
@@ -277,10 +376,21 @@ function MemDrawing(canvas) {
     if(hDist < minHDist && vDist < minVDist && vDist < h) {
       hforce = (minHDist - hDist) * options.forceConstant * (sx > tx ? 1 : -1);
     }
-    else if(vDist < minVDist && hDist < minHDist && hDist < w) {
+    if(vDist < minVDist && hDist < minHDist && hDist < w) {
       vforce = (minVDist - vDist) * options.forceConstant * (sy > ty ? 1 : -1);
     }
 
+    if(nodes[source].connections.indexOf(nodes[target].id) >= 0) {
+      var maxVDist = h + options.attractionDistance,
+          maxHDist = w + options.attractionDistance;
+
+      if(hDist > maxHDist) {
+        hforce = (maxHDist - hDist) * options.forceConstant * (sx > tx ? 1 : -1);
+      }
+      else if(vDist > maxVDist) {
+        vforce = (maxVDist - vDist) * options.forceConstant * (sy > ty ? 1 : -1);
+      }
+    }
 
     if(sContents != dragging) {
       move(sContents, hforce, vforce)
@@ -348,25 +458,48 @@ function MemDrawing(canvas) {
   function connect(source, target) {
     var sourceComponent = componentLookup(source);
     var sourceNode = containingNodeLookup(source);
-    // console.log(source, sourceNode)
-    // console.log(target, targetNode)
     var targetNode = containingNodeLookup(target);
 
     if(sourceComponent.line) {
       sourceComponent.line.remove();
     }
 
+    sourceNode.connections.push(targetNode.id);
+    targetNode.connections.push(sourceNode.id);
     var line = drawLine(sourceNode.background, targetNode.background);
-    edges.push({
+    var edge = {
       source: sourceNode.background,
       target: targetNode.background,
       svg: line,
-    });
+    };
+    edges.push(edge);
+
     startForce();
   }
 
   function updateNode(lVal, val) {
+
     // console.log('Updating', lVal, 'with', val)
+    if(isStackVar(lVal)) {
+      if(isPtr(lVal)) {
+        if(lVal instanceof ast.MemberAccess && lVal.e1 instanceof ast.Deref && lVal.e1.e1.name == 'this') {
+          var name = lVal.field;
+        }
+        else {
+          var name = lVal.asString();
+        }
+        if(name in ghostTargets) {
+          ghostTargets[name].removeGhost(name);
+        }
+        if(val < 5000) {
+          var target = nodes[val];
+          ghostTargets[name] = target;
+          target.addGhost(name);
+        }
+      }
+      return;
+    }
+
     var component = componentLookup(lVal);
     var text = component.typ instanceof ast.TypPtr ? '0x' + val.toString(16) : String(val);
     component.svg.remember('text').text(text);
@@ -410,14 +543,22 @@ function MemDrawing(canvas) {
   }
 
   function clear() {
-    draw.clear();
     edges = [];
     nodes = [];
+    namedVars = {};
+    ghostTargets = {};
     lastAdded = undefined;
+    draw.clear();
+    edgeSVG = draw.group();
+  }
+
+  function updateNamedVars(updatedVars) {
+    namedVars = updatedVars;
   }
 
   this.clear = clear;
   this.addNode = addNode;
+  this.updateNamedVars = updateNamedVars;
   this.deleteNode = deleteNode;
   this.updateNode = updateNode;
 }

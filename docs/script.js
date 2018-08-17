@@ -94,14 +94,23 @@ struct BinaryTree {
 
 int main() {
   BinaryTree tree;
-  tree.add(2);
+  tree.add(4);
   tree.add(1);
   tree.add(3);
-  tree.add(4);
+  tree.add(0);
+  tree.add(2);
 }`
 
-var default_code = `int main() {
-  cout << "Hello world!";
+// var default_code = `int main() {
+//   cout << "Hello world!";
+// }`
+var default_code = `struct Test {
+  Test *next;
+};
+
+int main() {
+  Test *t = new Test;
+  t->next = new Test;
 }`
 
 var init_code = {
@@ -147,7 +156,7 @@ function toggleBreakpoint(steppoint) {
  *  Graphical heap init
  */
 
-var heap = new MemDrawing('heap-canvas');
+var heap = new Heap('heap-canvas');
 
 /*
  *  C-learn.js init
@@ -158,11 +167,10 @@ var currentFrame = undefined;
 
 function onAssign(v, val) {
   if(v instanceof compiler.ast.Var) {
-    // currentFrame.vars[v.name].find('.function-var-value').html(val);
+    currentFrame.vars[v.name] = val;
+    heap.updateNamedVars(currentFrame.vars);
   }
-  else {
-    heap.updateNode(v, val);
-  }
+  heap.updateNode(v, val);
 }
 
 var frameList = document.getElementById('stack-frames');
@@ -179,6 +187,10 @@ function onFnCall(name, args, frame, position) {
 
   var argStr = '(' + args.join(', ') + ')'
   newFrame.getElementsByClassName('name')[0].innerHTML = name + argStr;
+  var vars = {};
+  for(var v in frame) {
+    vars[v] = undefined;
+  }
   // var vars = {};
   // for(var v in frame) {
   //   var newVar = $('#function-var-template').clone().css( 'display', '' ).appendTo(newFrame.find('.function-vars'));
@@ -195,12 +207,15 @@ function onFnCall(name, args, frame, position) {
 
   currentFrame = {
     dom: newFrame,
-    vars: frame,
+    vars: vars,
     prev: currentFrame,
   }
 }
 
 function onFnEnd(name, ret) {
+  for(var v in currentFrame.vars) {
+    heap.updateNode(new ast.Var(v), undefined);
+  }
   currentFrame.dom.classList.add('hidden');
   ((e) => setTimeout(() => e.remove(), 800))(currentFrame.dom);
   currentFrame = currentFrame.prev;
@@ -280,6 +295,13 @@ function clearState() {
     currentFrame = currentFrame.prev;
   }
   state.program = compiler.compile(editor.getValue(), options);
+  for(steppoint of state.steppoints) {
+    editor.session.removeMarker(steppoint.marker);
+    if(steppoint.breakpoint) {
+      editor.session.removeMarker(steppoint.breakpoint);
+    }
+  }
+  state.steppoints = [];
 }
 
 function edit() {

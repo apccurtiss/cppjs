@@ -143,7 +143,7 @@ module.exports = {
 
   Nop: function() {
     this.apply = function(f){ return this; }
-    this.walk = function(f){ return; return this; };
+    this.walk = function(f){ return; };
   },
 
   Lit: function(typ, val) {

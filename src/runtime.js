@@ -92,7 +92,8 @@ function Program(compiled_code, options) {
 
     else if(current instanceof ast.Deref) {
       return this.stepgen(current.e1, (v1) => {
-        return next(new ast.Deref(new ast.Lit(current.e1typ, valueOf(v1)), current.e1typ));
+        return next(new ast.Deref(v1, current.e1typ));
+        // return next(new ast.Deref(new ast.Lit(current.e1typ, valueOf(v1)), current.e1typ));
       });
     }
 
@@ -221,7 +222,7 @@ function Program(compiled_code, options) {
             this.onPositionChange(current.position);
             this.onFnCall(fnName, argList, fn.frame, fn.position);
             for(var a in argVals) {
-              this.onAssign(new ast.Var(a), argVals[a]);
+              this.onAssign(new ast.Var(a, fn.frame[a]), argVals[a]);
             }
 
             // This function will be called when the function returns
