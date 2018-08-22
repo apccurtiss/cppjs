@@ -33,6 +33,21 @@ test('Statements', function(t) {
   t.end();
 });
 
+test('Comments', function(t) {
+  t.plan(7);
+
+  t.doesNotThrow(() => parser.parseStmt(`//`));
+  t.doesNotThrow(() => parser.parseStmt(`// should work`))
+  t.doesNotThrow(() => parser.parseStmt(`/**/`));
+  t.throws(() => parse.parseStmt(`/* should fail`));
+
+  t.doesNotThrow(() => parser.parseStmt(`1 + 2 + 3; // ignore me`))
+  t.doesNotThrow(() => parser.parseStmt(` 1 + 2 /* mwahahaha */ + 3; `))
+  t.doesNotThrow(() => parser.parseStmt(` if ( 1 + 2 ) { 1 + 2 ; // ignore me\n} else { 3 + 4 ; } `));
+
+  t.end();
+});
+
 test('Strings', function(t) {
   t.plan(3);
 
@@ -99,9 +114,11 @@ test('Classes and structs', function(t) {
 
   t.doesNotThrow(() => parser.parseFile(`
     struct Node {
+      /* Binary tree */
       int key ;
       Node * left , * right ;
 
+      // constructor
       int Node ( int k , Node * l , Node * r ) {
         key = k ;
         left = l ;

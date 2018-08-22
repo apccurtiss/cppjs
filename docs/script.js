@@ -105,10 +105,11 @@ int main() {
 //   cout << "Hello world!";
 // }`
 var default_code = `struct Test {
-  Test *next;
+  Test *next; /* to simulate a linked list */
 };
 
 int main() {
+  // Let's get down to business!
   Test *t = new Test;
   t->next = new Test;
 }`

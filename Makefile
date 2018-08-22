@@ -1,5 +1,5 @@
 all:
-	browserify src/c.js -o docs/cjs-web.js
+	browserify -r ./src/compiler.js:compiler -o docs/cpp.js
 
 coffee:
 	coffee -o src/final -c src/coffee/
