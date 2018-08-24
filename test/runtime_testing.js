@@ -59,7 +59,7 @@ test('Perform complex prints.', function(t) {
   t.end();
 });
 
-test('Test operator presidence.', function(t) {
+test('Test operator precedence.', function(t) {
   t.plan(2);
 
   var output = '';
@@ -116,8 +116,9 @@ test('Test stepping through statements.', function(t) {
         cout << i;
       }
       {
+        // should be skipped
         cout << 3;
-        cout << 4;
+        cout << /*should be ignored*/ 4;
       }
       cout << 5;
       if(1 < 2) {
