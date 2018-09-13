@@ -110,6 +110,18 @@
               </div>
               <div class="widget-contents">
                 <div id="heap-canvas">
+                  <div class="heap-options">
+                    <div class="heap-option">
+                      <input type="checkbox" id="show-pointers-option"
+                        onclick="togglePointers(this.checked)"></input>
+                      <span>Show pointers</span>
+                    </div>
+                    <div class="heap-option">
+                      <input type="checkbox" id="draw-collapsed-option"
+                        onclick="toggleCollapsed(this.checked)"></input>
+                      <span>Collapse new nodes</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>

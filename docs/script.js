@@ -104,14 +104,50 @@ int main() {
 // var default_code = `int main() {
 //   cout << "Hello world!";
 // }`
-var default_code = `struct Test {
-  Test *next;
+var default_code = `struct Node {
+  int data;
+  Node *next;
+};
+
+struct LinkedList {
+    Node *head = NULL;
+
+    void addNode(int data) {
+        Node *newNode = new Node;
+        newNode->data = data;
+        newNode->next = NULL;
+
+        if(!head) {
+            head = newNode;
+        }
+        else {
+            Node *temp = head;
+            while(temp->next != NULL) {
+                temp = temp->next;
+            }
+            temp->next = newNode;
+        }
+    }
+
+    void printList() {
+      Node *temp = head;
+      while(temp != NULL) {
+          cout << temp->data;
+          cout << endl;
+          temp = temp->next;
+      }
+    }
 };
 
 int main() {
-  Test *t = new Test;
-  t->next = new Test;
-}`
+    LinkedList ll;
+    ll.addNode(4);
+    ll.addNode(2);
+    ll.addNode(7);
+    ll.addNode(1);
+    ll.addNode(8);
+    ll.addNode(9);
+}`;
 
 var init_code = {
   'linked-list': ll_code,
@@ -119,6 +155,9 @@ var init_code = {
 }[getURLVars()['file']] || default_code;
 
 var editor = ace.edit('editor');
+editor.setOptions({
+  fontSize: "16pt"
+});
 var Range = ace.require('ace/range').Range;
 editor.setTheme('ace/theme/ambiance');
 editor.getSession().setMode('ace/mode/c_cpp');
@@ -349,6 +388,14 @@ function reset() {
 
 function updateAnimationSpeed(value) {
   interval = (101 - value) * 10;
+}
+
+function togglePointers(value) {
+  heap.toggleLines(value);
+}
+
+function toggleCollapsed(value) {
+  heap.toggleCollapsed(value);
 }
 
 function init() {

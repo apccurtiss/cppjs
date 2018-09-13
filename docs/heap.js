@@ -6,12 +6,15 @@ function Heap(canvas) {
   const draw = SVG(canvas),
         globalBackground = draw.rect('100%', '100%').fill('#222'),
         options = {
+          drawLines: false,
+          createCollapsed: false,
           repulsionDistance: 20,
           attractionDistance: 40,
           forceConstant: 0.4,
           minLabelWidth: 30,
           baseWidth: 50,
           baseHeight: 30,
+          fontSize: 16,
         };
 
   var edgeSVG = draw.group(),
@@ -24,7 +27,7 @@ function Heap(canvas) {
 
   function Node(component, loc) {
     this.id = '0x' + loc.toString(16);
-    var addr = draw.text(this.id).font({anchor: 'left', family: 'monospace'}).fill('#fff').move(5, 0).opacity(0);
+    var addr = draw.text(this.id).font({anchor: 'left', family: 'monospace', size: options.fontSize}).fill('#fff').move(5, 0).opacity(0);
     var componentSVG = component.svg.move(0, addr.bbox().height).opacity(0)
     var background = draw.rect(50, 1).radius(10).attr({ fill: '#1b8db2' });
     var expandIcon = undefined;
@@ -98,7 +101,9 @@ function Heap(canvas) {
       .on('mouseleave', onMouseUp)
       .on('mousemove', onMouseMove);
 
-    // toggleCollapsed();
+    if(!options.createCollapsed) {
+      toggleCollapsed();
+    }
   }
 
   function getColor(node) {
@@ -119,20 +124,21 @@ function Heap(canvas) {
   }
 
   function generateGhostPointer(name) {
-    var newStackGhost = draw.rect(options.baseWidth, options.baseHeight).radius(10).attr({ fill: '#005774' });
-    var text = draw.text(name).font({anchor: 'middle', family: 'monospace'}).fill('#fff');
+    var text = draw.text(name).font({anchor: 'middle', family: 'monospace', size: options.fontSize}).fill('#fff');
+    var labelWidth = text.bbox().width + 10;
+    var newStackGhost = draw.rect(labelWidth, options.baseHeight).radius(10).attr({ fill: '#005774' });
     var text_offset = verticalCenterOffset(text, newStackGhost);
-    var hCenter = options.baseWidth / 2;
+    var hCenter = labelWidth / 2;
     var arrow = draw.polygon([[hCenter - 5, options.baseHeight - 1], [hCenter + 5, options.baseHeight - 1], [hCenter, options.baseHeight + 6]]).fill('#005774');
     return draw.group().add(newStackGhost)
         .add(arrow)
-        .add(text.move(options.baseWidth/2, text_offset))
-        .opacity(0.4);
+        .add(text.move(labelWidth/2, text_offset))
+        .opacity(0.8);
   }
 
   function makeLabel(text) {
     var padding = 4;
-    var label = draw.text(text).font({anchor: 'left', family: 'sans', size: 12})
+    var label = draw.text(text).font({anchor: 'left', family: 'sans', size: options.fontSize})
       .fill('#fff').move(padding, padding);
     var labelBox = label.bbox();
     var background = draw.rect(
@@ -147,7 +153,7 @@ function Heap(canvas) {
 
     if (typ instanceof ast.TypBase || typ instanceof ast.TypPtr) {
       var newComponent = draw.rect(options.baseWidth, options.baseHeight).radius(10).attr({ fill: getColor(typ) });
-      var text = draw.text('???').font({anchor: 'middle', family: 'monospace'}).fill('#fff');
+      var text = draw.text('???').font({anchor: 'middle', family: 'monospace', size: options.fontSize}).fill('#fff');
       var text_offset = verticalCenterOffset(text, newComponent);
       return {
         typ: typ,
@@ -380,7 +386,7 @@ function Heap(canvas) {
       vforce = (minVDist - vDist) * options.forceConstant * (sy > ty ? 1 : -1);
     }
 
-    if(nodes[source].connections.indexOf(nodes[target].id) >= 0) {
+    if(options.drawLines && (nodes[source].connections.indexOf(nodes[target].id) >= 0)) {
       var maxVDist = h + options.attractionDistance,
           maxHDist = w + options.attractionDistance;
 
@@ -466,7 +472,10 @@ function Heap(canvas) {
 
     sourceNode.connections.push(targetNode.id);
     targetNode.connections.push(sourceNode.id);
-    var line = drawLine(sourceNode.background, targetNode.background);
+    var line = undefined;
+    if(options.drawLines) {
+      line = drawLine(sourceNode.background, targetNode.background);
+    }
     var edge = {
       source: sourceNode.background,
       target: targetNode.background,
@@ -478,7 +487,6 @@ function Heap(canvas) {
   }
 
   function updateNode(lVal, val) {
-
     // console.log('Updating', lVal, 'with', val)
     if(isStackVar(lVal)) {
       if(isPtr(lVal)) {
@@ -523,8 +531,14 @@ function Heap(canvas) {
 
   function updateEdges() {
     for(var e of edges) {
-      e.svg.remove();
-      e.svg = drawLine(e.source, e.target);
+      if(e.svg) {
+        e.svg.remove();
+      }
+    }
+    if(options.drawLines) {
+      for(var e of edges) {
+        e.svg = drawLine(e.source, e.target);
+      }
     }
   }
 
@@ -556,9 +570,20 @@ function Heap(canvas) {
     namedVars = updatedVars;
   }
 
+  function toggleLines(onOff) {
+    options.drawLines = onOff;
+    startForce();
+  }
+
+  function toggleCollapsed(onOff) {
+    options.createCollapsed = onOff;
+  }
+
   this.clear = clear;
   this.addNode = addNode;
   this.updateNamedVars = updateNamedVars;
   this.deleteNode = deleteNode;
   this.updateNode = updateNode;
+  this.toggleLines = toggleLines;
+  this.toggleCollapsed = toggleCollapsed;
 }
