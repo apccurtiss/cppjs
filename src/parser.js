@@ -6,10 +6,22 @@ var lang = require('bennu').lang;
 var nu = require('nu-stream').stream;
 var ast = require('./ast');
 
-var ws = (p) => lang.between(
-  parse.many(text.space),
-  parse.many(text.space),
-  p);
+var comment_singleline = parse.sequence(
+  text.string('//'),
+  parse.manyTill(text.anyChar, parse.either(text.character('\n'), parse.eof))
+)
+var comment_multiline = parse.sequence(
+  text.string('/*'),
+  parse.manyTill(text.anyChar, text.string('*/')),
+  parse.expected('Expected end comment "*/"', text.string('*/'))
+);
+var comment = parse.either(
+  parse.attempt(comment_singleline),
+  comment_multiline
+);
+
+var spacers = parse.either(text.space, comment);
+var ws = (p) => lang.between(parse.many(spacers), parse.many(spacers), p);
 
 var bind_list = (...args) => {
   var parsers = args.slice(0, -1);
@@ -255,9 +267,9 @@ var for_loop = parse.late(() =>
 var scope = parse.late(() => lang.between(
     text.character('{'),
     text.character('}'),
-    parse.bind(ws(stmts), s => parse.always(new ast.Scope(new ast.Seq(s))))))
+    parse.bind(ws(stmts), s => parse.always(new ast.Scope(new ast.Seq(s))))));
 
-var stmt = ws(parse.choice(
+var stmt = parse.either(parse.attempt(comment), ws(parse.choice(
   if_stmt,
   while_loop,
   for_loop,
@@ -269,7 +281,8 @@ var stmt = ws(parse.choice(
     (e) => parse.always(new ast.Return(e)))),
   step_point(parse.attempt(lang.then(var_decls, semi))),
   step_point(lang.then(expr, semi)),
-  step_point(parse.next(semi, parse.always(new ast.Nop())))));
+  step_point(parse.next(semi, parse.always(new ast.Nop()))))
+));
 
 var stmts = parse.eager(parse.many(ws(stmt)));
 

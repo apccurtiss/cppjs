@@ -101,9 +101,6 @@ int main() {
   tree.add(2);
 }`
 
-// var default_code = `int main() {
-//   cout << "Hello world!";
-// }`
 var default_code = `struct Node {
   int data;
   Node *next;
