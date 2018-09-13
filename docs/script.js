@@ -144,6 +144,8 @@ int main() {
     ll.addNode(1);
     ll.addNode(8);
     ll.addNode(9);
+
+    ll.printList();
 }`;
 
 var init_code = {
