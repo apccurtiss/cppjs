@@ -832,7 +832,7 @@ var x1 = stream.from;
 (expected = (function(expect, p3) {
     return new(Parser)((function(state, m, cok, cerr, eok, eerr) {
         var eerr0 = (function(x2, state0, m0) {
-            return eerr(new(ExpectError)(state0.position, expect), state0, m0);
+            return eerr(new(ExpectError)(state0.position, expect, x2.found), state0, m0);
         });
         return new(Tail)(p3.run, state, m, cok, cerr, eok, eerr0);
     }));
@@ -2124,11 +2124,38 @@ module.exports = {
 }
 
 },{}],13:[function(require,module,exports){
-function CJSTypeError(message) {
+function CJSSyntaxError(message, index, expected, found) {
+    this.name = "CJSSyntaxError";
+    this.message = message;
+    this.stack = (new Error()).stack;
+    this.index = index;
+    this.expected = expected;
+    this.found = found;
+}
+CJSSyntaxError.prototype = Error.prototype;
+
+function CJSTypeError(message, index) {
     this.name = "CJSTypeError";
-    this.message = (message || "");
+    this.message = message;
+    this.stack = (new Error()).stack;
+    this.index = index;
 }
 CJSTypeError.prototype = Error.prototype;
+
+function CJSUnimplementedError(message, index) {
+    this.name = "CJSUnimplementedError";
+    this.message = message;
+    this.stack = (new Error()).stack;
+    this.index = index;
+}
+CJSUnimplementedError.prototype = Error.prototype;
+
+function CJSInternalError(message) {
+    this.name = "CJSInternalError";
+    this.message = message;
+    this.stack = (new Error()).stack;
+}
+CJSInternalError.prototype = Error.prototype;
 
 function CJSMultiError(errors) {
     this.name = "CJSMultiError";
@@ -2137,11 +2164,37 @@ function CJSMultiError(errors) {
 }
 CJSMultiError.prototype = Error.prototype;
 
-module.exports = {
-  CJSTypeError: CJSTypeError,
-  CJSMultiError: CJSMultiError,
+function buildErrMsg(str, index) {
+    var lineStart = str.lastIndexOf('\n', index) + 1,
+        lineEnd = str.indexOf('\n', index),
+        line = str.slice(lineStart, lineEnd),
+        lineNum = (str.slice(0, lineStart).match(/\n/g)||[]).length,
+        col = index - lineStart;
+
+    if(lineNum > 1 && /^\s*$/.test(line.slice(0, col))) {
+        lineEnd = lineStart - 1;
+        lineStart = str.lastIndexOf('\n', lineEnd - 1) + 1;
+        line = str.slice(lineStart, lineEnd);
+        lineNum -= 1;
+        col = lineEnd - lineStart;
+    }
+        
+    
+    return {
+        location: line + ("\n" + Array(col + 1).join(" ") + "^"),
+        line: lineNum + 1,
+        col: col + 1,
+    }
 }
 
+module.exports = {
+    CJSSyntaxError: CJSSyntaxError,
+    CJSTypeError: CJSTypeError,
+    CJSUnimplementedError: CJSUnimplementedError,
+    CJSInternalError: CJSInternalError,
+    CJSMultiError: CJSMultiError,
+    buildErrMsg: buildErrMsg,
+}
 },{}],14:[function(require,module,exports){
 "use strict";
 
@@ -2216,13 +2269,14 @@ function initMemory(loc, typ, initFunc) {
   }
 }
 
-function MemoryModel(builtins) {
+function Memory(builtins) {
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView
-  // var buffer = new ArrayBuffer(1024);
+  // var STACK_SIZE = 2048;
+  // var buffer = new ArrayBuffer(STACK_SIZE);
   // var view = new DataView(buffer);
   // var esp = 0;
   // var ebp = 0;
-  //
+  
   // var loc = 4;
   // view.setInt8(loc, 10);
   // view.getInt8(loc);
@@ -2322,7 +2376,7 @@ function MemoryModel(builtins) {
         offset += getTypSize(field.typ);
       }
     }
-    throw Error("Internal error. Something has gone wrong.")
+    throw new errors.CJSInternalError("Node was not LValue");
   }
 
   this.valueOfLValue = function(node) {
@@ -2337,9 +2391,7 @@ function MemoryModel(builtins) {
 }
 
 module.exports = {
-  MemoryModel: MemoryModel,
-  getTypSize: getTypSize,
-  initMemory: initMemory,
+  Memory: Memory,
 }
 
 },{"./ast":12}],15:[function(require,module,exports){
@@ -2350,22 +2402,59 @@ var text = require('bennu').text;
 var lang = require('bennu').lang;
 var nu = require('nu-stream').stream;
 var ast = require('./ast');
+var errors = require('./errors');
 
 var comment_singleline = parse.sequence(
   text.string('//'),
   parse.manyTill(text.anyChar, parse.either(text.character('\n'), parse.eof))
-)
+);
+
 var comment_multiline = parse.sequence(
   text.string('/*'),
   parse.manyTill(text.anyChar, text.string('*/')),
-  parse.expected('Expected end comment "*/"', text.string('*/'))
+  text.string('*/')
 );
+
 var comment = parse.either(
   parse.attempt(comment_singleline),
   comment_multiline
 );
 
 var spacers = parse.either(text.space, comment);
+
+var manyWithErrorRecovery = (parser, recovery) => {
+  var iter = (state) => {
+    var success = (ok, _state) => {
+      if(state.eq(_state)) {
+        return parse.fail(parse.ParserError("Parser succeeded but no input was consumed."))
+      }
+      return parse.bind(iter(state), (rest) => parse.always([ok, ...rest]));
+    }
+    
+    var failure = (msg, state) => {
+      console.log("Failure")
+      return parse.parseState(recovery, state,
+        (_, _state) => {
+          if(state.eq(_state)) {
+            return parse.fail(parse.ParserError("Parser succeeded but no input was consumed."))
+          }
+          console.log("Recovery failure as well. State:", state)
+          return parse.next(
+            parse.either(parse.fail(msg), iter(state)),
+            parse.fail(msg)
+          );
+        },
+        (_, state) => {
+          return parse.bind(parse.setParserState(state), (_) => {
+            return parse.always([]);
+          });
+        })
+    }
+    return parse.parseState(parser, state, success, failure);
+  }
+  return parse.bind(parse.getParserState, iter);
+};
+
 var ws = (p) => lang.between(parse.many(spacers), parse.many(spacers), p);
 
 var bind_list = (...args) => {
@@ -2381,8 +2470,7 @@ var nu_stream_as_string = (p) => parse.bind(p,
     (h, acc) => h + acc,
     ps)));
 
-var consume_all = (p) => parse.expected('Not end of file', lang.then(p, parse.eof));
-
+var consume_all = (p) => lang.then(p, parse.eof);
 
 var step_point = (p) => {
   return bind_list(
@@ -2390,7 +2478,7 @@ var step_point = (p) => {
     (start, result, end) => new ast.Steppoint({start: start.index, end: end.index}, result))
   };
 
-var semi = parse.expected('semicolon', text.character(';'))
+var semi = text.character(';');
 
 var letter_or_under = parse.either(text.letter, text.character('_'))
 var ident = ws(parse.bind(
@@ -2533,9 +2621,11 @@ var declarator = (baseParser) => bind_list(
   parse.many(lang.between(
     ws(text.character('[')),
     ws(text.character(']')),
-    expr)),
+    parse.optional(undefined, expr))),
   (base, ptrs, name, arrs) => new ast.Decl(nu.foldl(
-    (acc, h) => new ast.TypArr(acc, h),
+    (acc, h) => {
+      return new ast.TypArr(acc, h);
+    },
     nu.foldl(
       (acc, _) => new ast.TypPtr(acc),
       base,
@@ -2629,7 +2719,12 @@ var stmt = parse.either(parse.attempt(comment), ws(parse.choice(
   step_point(parse.next(semi, parse.always(new ast.Nop()))))
 ));
 
+var recover = (p1, p2) => {
+  return parse.either(p1, p2);
+}
+
 var stmts = parse.eager(parse.many(ws(stmt)));
+// var stmts = manyWithErrorRecovery(ws(stmt), parse.manyTill(text.anyChar, text.character(';')));
 
 var params = lang.between(
   text.character('('),
@@ -2711,10 +2806,24 @@ var file = parse.bind(
         fn_def)))),
     (body) => parse.always(new ast.Seq(body)));
 
-var parseFile = (s) => parse.run(consume_all(file), s)
-var parseFn = (s) => parse.run(consume_all(fn_def), s)
-var parseExpr = (s) => parse.run(consume_all(expr), s)
-var parseStmt = (s) => parse.run(consume_all(stmt), s)
+
+var CJSParse = (p) => {
+  return (s) => {
+    try {
+      return parse.run(consume_all(p), s);
+    }
+    catch(e) {
+      var m = errors.buildErrMsg(s, e.position.index);
+      var msg = `Line ${m.line}, column ${m.col}: Expected "${e.expected}", found "${e.found}"\n${m.location}`;
+      throw new errors.CJSSyntaxError(msg, e.position.index, e.expected, e.found)
+    }
+  }
+}
+
+var parseFile = CJSParse(file)
+var parseFn = CJSParse(fn_def)
+var parseExpr = CJSParse(expr)
+var parseStmt = CJSParse(stmt)
 
 module.exports = {
   parseFile: parseFile,
@@ -2723,7 +2832,7 @@ module.exports = {
   parseStmt: parseStmt,
 }
 
-},{"./ast":12,"bennu":5,"nu-stream":10}],16:[function(require,module,exports){
+},{"./ast":12,"./errors":13,"bennu":5,"nu-stream":10}],16:[function(require,module,exports){
 "use strict";
 
 var ast = require('./ast');
@@ -2737,7 +2846,6 @@ function preprocess(node) {
   };
 
   function pp(node) {
-    // TODO(alex): Move frame calculation to typechecker
     if(node instanceof ast.Var) {
       if(node.name in defines) {
         return defines[node.name];
@@ -2758,6 +2866,7 @@ module.exports = {
 
 var ast = require('./ast');
 var mem = require('./memory');
+var errors = require('./errors');
 
 function Program(compiled_code, options) {
   function deferErrors(f) {
@@ -2792,7 +2901,7 @@ function Program(compiled_code, options) {
     functions[fn.name] = fn;
   }
 
-  var memory = new mem.MemoryModel(functions);
+  var memory = new mem.Memory(functions);
 
   function valueOf(leaf) {
     if(leaf instanceof ast.Lit) {
@@ -2890,7 +2999,7 @@ function Program(compiled_code, options) {
             this.onDynamicAllocation(v1, loc);
             return next(new ast.Lit(new ast.TypBase('int'), loc));
           default:
-            throw Error('Unimplemented uop: ' + current.op);
+            throw errors.CJSUnimplementedError('Unimplemented uop: ' + current.op);
         }
       });
     }
@@ -2931,7 +3040,7 @@ function Program(compiled_code, options) {
             case '>=':
               return next(new ast.Lit('bool', valueOf(e1) >= valueOf(e2)));
             default:
-              throw Error('Unimplemented bop: ' + current.op);
+              throw errors.CJSUnimplementedError('Unimplemented bop: ' + current.op);
           }
         })
       );
@@ -3028,8 +3137,7 @@ function Program(compiled_code, options) {
         }
       });
     }
-    console.trace("Here:")
-    throw Error('Unimplemented type: ' + '"' + current.constructor.name) + '"';
+    throw errors.CJSUnimplementedError('Unimplemented type: ' + '"' + current.constructor.name) + '"';
   }
 
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
@@ -3051,18 +3159,57 @@ function Program(compiled_code, options) {
 
 module.exports = {
   Program: Program,
-  initMemory: mem.initMemory,
 }
 
-},{"./ast":12,"./memory":14}],18:[function(require,module,exports){
+},{"./ast":12,"./errors":13,"./memory":14}],18:[function(require,module,exports){
 "use strict";
 
 var ast = require('./ast');
 var errors = require('./errors');
 var memory = require('./memory');
 
-function verifyTyps(typ1, typ2) {
-  return true;
+function typ2str(typ) {
+  if(typ instanceof ast.TypBase) {
+    return typ.typ;
+  }
+  else if(typ instanceof ast.TypPtr || typ instanceof ast.TypArr) {
+    return `${typ2str(typ.typ)}*`;
+  }
+  else if(typ instanceof ast.TypObj) {
+    return typ.name;
+  }
+  else {
+    throw new errors.CJSUnimplementedError(`Unimplemented type to stringify: ${typ.constructor.name}`)
+  }
+}
+
+function coercible(typ1, typ2) {
+  if(typ1 instanceof ast.TypBase && typ2 instanceof ast.TypBase) {
+    return typ1.typ == typ2.typ;
+  }
+  else if(typ1 instanceof ast.TypObj && typ2 instanceof ast.TypObj) {
+    return typ1.name == typ2.name;
+  }
+  else if(typ1 instanceof ast.TypPtr) {
+    if(typ2 instanceof ast.TypPtr) {
+      return coercible(typ1.typ, typ2.typ);
+    }
+    else if(typ2 instanceof ast.TypBase) {
+      return typ2.typ == 'int';
+    }
+    else {
+      return false;
+    }
+  }
+  else {
+    return false;
+  }
+}
+
+function assertMatch(typ1, typ2) {
+  if(!coercible(typ1, typ2)) {
+    throw new errors.CJSTypeError(`Invalid conversion from '${typ2str(typ1)}' to '${typ2str(typ2)}'`);
+  }
 }
 
 function typecheck(tree) {
@@ -3079,17 +3226,20 @@ function typecheck(tree) {
     if(node instanceof ast.TypBase) {
       return [node, node];
     }
+
     else if(node instanceof ast.TypPtr) {
       var [ptrTyp, _] = getTyp(node.typ, env);
       var typ = new ast.TypPtr(ptrTyp);
       return [typ, typ];
     }
+
     else if(node instanceof ast.TypArr) {
       var [elementTyp, _] = getTyp(node.typ, env);
       var [size, sizeTyp] = getTyp(node.size, env);
       var typ = new ast.TypArr(elementTyp, size);
       return [typ, typ];
     }
+
     else if(node instanceof ast.TypObj) {
       var fields = node.fields.map((f) => {
         var [typ, _] = getTyp(f.typ, env);
@@ -3115,6 +3265,7 @@ function typecheck(tree) {
 
       return [typ, typ];
     }
+
     else if(node instanceof ast.TypFn) {
       var [ret, _] = getTyp(node.ret, env);
       var params = node.params.map((p) => {
@@ -3124,13 +3275,15 @@ function typecheck(tree) {
       var typ = new ast.TypFn(ret, params);
       return [typ, typ];
     }
+
     else if(node instanceof ast.TypName) {
       if(!(node.name in typs)) {
-        throw Error("Unknown type: " + node.name);
+        throw errors.CJSTypeError("Unknown type: " + node.name);
       }
       var typ = typs[node.name];
       return [typ, typ];
     }
+
     // LValues
     else if(node instanceof ast.Var) {
       if(!(node.name in env)) {
@@ -3142,49 +3295,54 @@ function typecheck(tree) {
             }
           }
         }
-        throw new errors.CJSTypeError(node.name + ' was not declared');
+        throw new errors.CJSTypeError(`${node.name} was not declared`);
       }
       return [new ast.Var(node.name, env[node.name]), env[node.name]];
     }
+
     else if(node instanceof ast.MemberAccess) {
       var [e1, t1] = getTyp(node.e1, env);
       if(!(t1 instanceof ast.TypObj)) {
-        throw Error("Can only access the member '" + node.field + "' of an object, not of a(n) " + t1.asString());
+        throw new errors.CJSTypeError(`Can only access the member '${node.field}' of an object, not a value of type ''${t1.asString()}'`);
       }
       for(var field of t1.fields) {
         if(field.name == node.field) {
           return [new ast.MemberAccess(e1, node.field, t1), field.typ];
         }
       }
-      throw Error("An object of type " + t1.name + " has no field named '" + node.field + "'.");
+      throw new errors.CJSTypeError(`An object of type '${t1.name}' has no field named '${node.field}'`);
     }
+
     else if(node instanceof ast.IndexAccess) {
       var [e1, t1] = getTyp(node.e1, env);
       var [index, tindex] = getTyp(node.index, env);
-      verifyTyps(tindex, typs.int);
+      assertMatch(tindex, typs.int);
       return [new ast.IndexAccess(e1, index, t1), t1.typ];
     }
+
     else if(node instanceof ast.Deref) {
       var [e1, t1] = getTyp(node.e1, env);
       if(!(t1 instanceof ast.TypPtr)) {
-        throw new errors.CJSTypeError('Must dereference pointer, not ' + t1.toString());
+        throw new errors.CJSTypeError(`${t1.toString()} is not a pointer type, so it cannot be dereferenced.`);
       }
       return [new ast.Deref(e1, t1), t1.typ];
     }
+
     // Others
     else if(node instanceof ast.Lit) {
       return [node, node.typ];
     }
+
     else if(node instanceof ast.ObjField) {
       var [typ, _] = getTyp(node.typ, env);
       if(node.init) {
         var [init, tinit] = getTyp(node.init, env);
-        verifyTyps(typ, tinit);
+        assertMatch(typ, tinit);
         return [new ast.ObjField(node.name, node.visibility, typ, init), typs.void];
       }
       return [new ast.ObjField(node.name, node.visibility, typ, node.init), typs.void];
-
     }
+
     else if(node instanceof ast.Typedef) {
       if(node.typ instanceof ast.TypName) {
         var [typ, _] = getTyp(node.typ, env);
@@ -3198,38 +3356,45 @@ function typecheck(tree) {
       }
       return [new ast.Typedef(node.name, typ), typs.void];
     }
+
     else if(node instanceof ast.Decl) {
       var [typ, _] = getTyp(node.typ, env);
       env[node.name] = typ;
       if(node.init) {
         var [init, initTyp] = getTyp(node.init, env);
-        verifyTyps(initTyp, typ);
+        assertMatch(initTyp, typ);
         return [new ast.Decl(typ, node.name, init), typs.void];
       }
       return [new ast.Decl(typ, node.name, node.init), typs.void];
     }
+
     else if(node instanceof ast.Uop) {
       var [e1, t1] = getTyp(node.e1, env);
       switch(node.op) {
         case '&':
+        case 'new':
           return [new ast.Uop(node.op, e1), new ast.TypPtr(t1)];
         default:
           return [new ast.Uop(node.op, e1), t1];
       }
     }
+
     else if(node instanceof ast.Bop) {
       var [e1, t1] = getTyp(node.e1, env), [e2, t2] = getTyp(node.e2, env);
-      verifyTyps(t1, t2);
+      assertMatch(t1, t2);
       return [new ast.Bop(node.op, e1, e2), t1];
     }
+
     else if(node instanceof ast.Ternary) {
       var [cond, tcond] = getTyp(node.cond, env), [e1, t1] = getTyp(node.e1, env), [e2, t2] = getTyp(node.e2, env);
-      verifyTyps(t1, t2);
+      assertMatch(t1, t2);
       return [new ast.Ternary(cond, e1, e2), t1];
     }
+
     else if(node instanceof ast.Nop) {
       return [node, typs.void];
     }
+
     else if(node instanceof ast.Fn) {
       var [ret, _] = getTyp(node.ret, env);
       var params = node.params.map((p) => {
@@ -3252,39 +3417,29 @@ function typecheck(tree) {
       var [body, _] = getTyp(node.body, newEnv);
       return [new ast.Fn(ret, node.name, params, body, frame, node.position), typ];
     }
+
     else if(node instanceof ast.Call) {
       var [fn, tfn] = getTyp(node.fn, env);
       var args = node.args.map((a, i) => {
         var [arg, targ] = getTyp(a, env);
-        verifyTyps(targ, tfn.params[i]);
+        assertMatch(targ, tfn.params[i].typ);
         return arg;
       });
       return [new ast.Call(fn, args, node.position), tfn.ret];
     }
-    // else if(node instanceof ast.Construct) {
-    //   var [addr, taddr] = getTyp(node.addr, env);
-    //   var options = taddr.typ.constructors;
-    //   var args = [], argTyps = [];
-    //   for(var a of node.args) {
-    //     var [arg, targ] = getTyp(a, env);
-    //     args.push(arg);
-    //     argTyps.push(targ);
-    //   }
-    //   function isViableCandidate(args, cons) {
-    //     if(len(args))
-    //   }
-    //   return [new ast.Construct(addr, args), typs.void];
-    // }
+    
     else if(node instanceof ast.Return) {
       // TODO(alex): Figure out how to figure out what t1 needs to be
       var [e1, t1] = getTyp(node.e1, env);
       return [new ast.Return(e1), typs.void];
     }
+
     else if(node instanceof ast.Loop) {
       var [cond, tcond] = getTyp(node.cond, env);
       var [body, tbody] = getTyp(node.body, env);
       return [new ast.Loop(cond, body), typs.void];
     }
+
     else if(node instanceof ast.If) {
       var [cond, tcond] = getTyp(node.cond, env);
       var [body, _] = getTyp(node.body, env);
@@ -3294,6 +3449,7 @@ function typecheck(tree) {
       }
       return [new ast.If(cond, body, node.orelse), typs.void];
     }
+
     else if(node instanceof ast.Seq) {
       var elems = node.elems.map((e) => {
         var [elem, _] = getTyp(e, env);
@@ -3301,16 +3457,19 @@ function typecheck(tree) {
       });
       return [new ast.Seq(elems), typs.void];
     }
+
     else if(node instanceof ast.Scope) {
       var newEnv = Object.assign({}, env);
       var [body, _] = getTyp(node.body, newEnv);
       return [new ast.Scope(body), typs.void];
     }
+
     else if(node instanceof ast.Steppoint) {
       var [body, tbody] = getTyp(node.body, env);
       return [new ast.Steppoint(node.position, body), tbody];
     }
-    throw Error('Unimplemented type: ' + node.constructor.name);
+
+    throw errors.CJSUnimplementedError(`Unimplemented type to typecheck: ${node.constructor.name}`);
   }
 
   var builtinEnv = {
@@ -3334,12 +3493,12 @@ var ast = require('./ast');
 var parser = require('./parser');
 var runtime = require('./runtime');
 var typechecker = require('./typechecker');
+var errors = require('./errors');
 var pp = require('./preprocesser');
 
-function compile(preprocessedAst) {
+function compile(typecheckedAst) {
   var fns = [];
   var steppoints = [];
-  var typecheckedAst = typechecker.typecheck(preprocessedAst);
 
   function cmpl(node) {
     if(node instanceof ast.TypPtr) {
@@ -3447,21 +3606,15 @@ function compile(preprocessedAst) {
   }
 }
 
-// var lit1 = new ast.Lit(new ast.TypBase('int'), 1)
-//
-// console.log(
-//   compile(new ast.Fn(new ast.TypBase('int'), 'main', [], new ast.Scope(new ast.Seq([]))))
-// )
-
 module.exports = {
   compile: (code, options) => {
     var parsedAst = parser.parseFile(code);
     var preprocessedAst = pp.preprocess(parsedAst);
-    var compiledAst = compile(preprocessedAst);
+    var typecheckedAst = typechecker.typecheck(preprocessedAst);
+    var compiledAst = compile(typecheckedAst);
     return new runtime.Program(compiledAst, options || {});
   },
   ast: ast,
-  initMemory: runtime.initMemory,
 };
 
-},{"./ast":12,"./parser":15,"./preprocesser":16,"./runtime":17,"./typechecker":18}]},{},[]);
+},{"./ast":12,"./errors":13,"./parser":15,"./preprocesser":16,"./runtime":17,"./typechecker":18}]},{},[]);

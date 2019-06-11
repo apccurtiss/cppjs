@@ -11,34 +11,6 @@ div, section, header, footer, ul, li, a {
   box-sizing: border-box; /* Opera/IE 8+ */
 }
 
-/* Flexbox setup */
-
-.box {
-  display: flex;
-  position: relative;
-  height: 100%;
-}
-
-.box.vertical {
-  flex-flow: column;
-}
-
-.box.horizontal {
-  flex-flow: row;
-}
-
-.box .fill {
-  flex: 1 1;
-}
-
-.box .double {
-  flex-grow: 2;
-}
-
-.box header, .box footer, .box .title {
-  flex: 0 0;
-}
-
 #main {
   overflow: hidden;
 }
@@ -194,6 +166,32 @@ li:hover .dropdown .dropdown-content {
 }
 
 /* Editor */
+#alert {
+  padding: 20px;
+  color: white;
+  position: absolute;
+  right: 0;
+  top: 0px;
+  /* width: 100%; */
+  border-radius: 5px;
+  z-index: 9999;
+  background-color: #E44;
+}
+
+.close-button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  color: white;
+  font-size: 22px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.close-button:hover {
+  font-weight: bold;
+}
+
 .current-runtime-position {
   position: absolute;
   background-color: #005774;
@@ -233,7 +231,7 @@ li:hover .dropdown .dropdown-content {
 }
 
 #dashboard.hidden {
-  flex: 0 1;
+  margin-right: -100%;
 }
 
 /* Widgets */
@@ -244,10 +242,6 @@ li:hover .dropdown .dropdown-content {
   display: flex;
   flex: 1 1;
   box-shadow: 0px 0px 10px 0px rgba(0,0,0,1)
-}
-
-#dashboard.hidden .widget-wrapper {
-  width: 0;
 }
 
 .widget-label {
@@ -423,45 +417,30 @@ footer {
     cursor: pointer;
 }
 
-/* Palettes */
-/* Steam */
-.color-steam-dark {
-  background: #18121e;
-  color: #fff;
+/* Flexbox setup */
+
+.box {
+  display: flex;
+  position: relative;
+  height: 100%;
 }
 
-.color-steam-cool {
-  background: #233237;
-  color: #fff;
+.box.vertical {
+  flex-flow: column;
 }
 
-.color-steam-warm {
-  background: #984b43;
-  color: #fff;
+.box.horizontal {
+  flex-flow: row;
 }
 
-.color-steam-highlight {
-  background: #eac67a;
-  color: #fff;
+.box .fill {
+  flex: 1 1;
 }
 
-/* Bold */
-.color-bold-dark {
-  background: #000;
-  color: #fff;
+.box .double {
+  flex-grow: 2;
 }
 
-.color-bold-cool {
-  background: #062f4f;
-  color: #fff;
-}
-
-.color-bold-warm {
-  background: #813772;
-  color: #fff;
-}
-
-.color-bold-highlight {
-  background: #b82601;
-  color: #fff;
+.box header, .box footer, .box .title {
+  flex: 0 0;
 }

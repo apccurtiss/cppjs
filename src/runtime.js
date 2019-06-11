@@ -2,6 +2,7 @@
 
 var ast = require('./ast');
 var mem = require('./memory');
+var errors = require('./errors');
 
 function Program(compiled_code, options) {
   function deferErrors(f) {
@@ -36,7 +37,7 @@ function Program(compiled_code, options) {
     functions[fn.name] = fn;
   }
 
-  var memory = new mem.MemoryModel(functions);
+  var memory = new mem.Memory(functions);
 
   function valueOf(leaf) {
     if(leaf instanceof ast.Lit) {
@@ -134,7 +135,7 @@ function Program(compiled_code, options) {
             this.onDynamicAllocation(v1, loc);
             return next(new ast.Lit(new ast.TypBase('int'), loc));
           default:
-            throw Error('Unimplemented uop: ' + current.op);
+            throw errors.CJSUnimplementedError('Unimplemented uop: ' + current.op);
         }
       });
     }
@@ -175,7 +176,7 @@ function Program(compiled_code, options) {
             case '>=':
               return next(new ast.Lit('bool', valueOf(e1) >= valueOf(e2)));
             default:
-              throw Error('Unimplemented bop: ' + current.op);
+              throw errors.CJSUnimplementedError('Unimplemented bop: ' + current.op);
           }
         })
       );
@@ -272,8 +273,7 @@ function Program(compiled_code, options) {
         }
       });
     }
-    console.trace("Here:")
-    throw Error('Unimplemented type: ' + '"' + current.constructor.name) + '"';
+    throw errors.CJSUnimplementedError('Unimplemented type: ' + '"' + current.constructor.name) + '"';
   }
 
   var stepper = this.stepgen(new ast.Call(new ast.Var('main'), []), (_) => {
@@ -295,5 +295,4 @@ function Program(compiled_code, options) {
 
 module.exports = {
   Program: Program,
-  initMemory: mem.initMemory,
 }

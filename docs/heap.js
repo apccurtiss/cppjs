@@ -1,6 +1,5 @@
 var compiler = require('compiler');
 var ast = compiler.ast;
-var initMemory = compiler.initMemory;
 
 function Heap(canvas) {
   const draw = SVG(canvas),

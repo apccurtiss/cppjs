@@ -4,8 +4,42 @@ var ast = require('./ast');
 var errors = require('./errors');
 var memory = require('./memory');
 
-function verifyTyps(typ1, typ2) {
-  return true;
+function typ2str(typ) {
+  if(typ instanceof ast.TypBase) {
+    return typ.typ;
+  }
+  else if(typ instanceof ast.TypPtr || typ instanceof ast.TypArr) {
+    return `${typ2str(typ.typ)}*`;
+  }
+  else if(typ instanceof ast.TypObj) {
+    return typ.name;
+  }
+  else {
+    throw new errors.CJSUnimplementedError(`Unimplemented type to stringify: ${typ.constructor.name}`)
+  }
+}
+
+function coercible(typ1, typ2) {
+  if(typ1 instanceof ast.TypBase && typ2 instanceof ast.TypBase) {
+    return typ1.typ == typ2.typ;
+  }
+  else if(typ1 instanceof ast.TypObj && typ2 instanceof ast.TypObj) {
+    return typ1.name == typ2.name;
+  }
+  else if(typ1 instanceof ast.TypPtr) {
+    if(typ2 instanceof ast.TypPtr) {
+      return coercible(typ1.typ, typ2.typ);
+    }
+    else if(typ2 instanceof ast.TypBase) {
+      return typ2.typ == 'int';
+    }
+    else {
+      return false;
+    }
+  }
+  else {
+    return false;
+  }
 }
 
 function typecheck(tree) {
@@ -22,17 +56,20 @@ function typecheck(tree) {
     if(node instanceof ast.TypBase) {
       return [node, node];
     }
+
     else if(node instanceof ast.TypPtr) {
       var [ptrTyp, _] = getTyp(node.typ, env);
       var typ = new ast.TypPtr(ptrTyp);
       return [typ, typ];
     }
+
     else if(node instanceof ast.TypArr) {
       var [elementTyp, _] = getTyp(node.typ, env);
       var [size, sizeTyp] = getTyp(node.size, env);
       var typ = new ast.TypArr(elementTyp, size);
       return [typ, typ];
     }
+
     else if(node instanceof ast.TypObj) {
       var fields = node.fields.map((f) => {
         var [typ, _] = getTyp(f.typ, env);
@@ -58,6 +95,7 @@ function typecheck(tree) {
 
       return [typ, typ];
     }
+
     else if(node instanceof ast.TypFn) {
       var [ret, _] = getTyp(node.ret, env);
       var params = node.params.map((p) => {
@@ -67,13 +105,15 @@ function typecheck(tree) {
       var typ = new ast.TypFn(ret, params);
       return [typ, typ];
     }
+
     else if(node instanceof ast.TypName) {
       if(!(node.name in typs)) {
-        throw Error("Unknown type: " + node.name);
+        throw errors.CJSTypeError("Unknown type: " + node.name, node.codeIndex());
       }
       var typ = typs[node.name];
       return [typ, typ];
     }
+
     // LValues
     else if(node instanceof ast.Var) {
       if(!(node.name in env)) {
@@ -85,49 +125,52 @@ function typecheck(tree) {
             }
           }
         }
-        throw new errors.CJSTypeError(node.name + ' was not declared');
+        throw new errors.CJSTypeError(`${node.name} was not declared`, node.codeIndex());
       }
       return [new ast.Var(node.name, env[node.name]), env[node.name]];
     }
+
     else if(node instanceof ast.MemberAccess) {
       var [e1, t1] = getTyp(node.e1, env);
       if(!(t1 instanceof ast.TypObj)) {
-        throw Error("Can only access the member '" + node.field + "' of an object, not of a(n) " + t1.asString());
+        throw new errors.CJSTypeError(`Can only access the member '${node.field}' of an object, not a value of type ''${t1.asString()}'`, node.codeIndex);
       }
       for(var field of t1.fields) {
         if(field.name == node.field) {
           return [new ast.MemberAccess(e1, node.field, t1), field.typ];
         }
       }
-      throw Error("An object of type " + t1.name + " has no field named '" + node.field + "'.");
+      throw new errors.CJSTypeError(`An object of type '${t1.name}' has no field named '${node.field}'`, node.codeIndex());
     }
+
     else if(node instanceof ast.IndexAccess) {
       var [e1, t1] = getTyp(node.e1, env);
       var [index, tindex] = getTyp(node.index, env);
-      verifyTyps(tindex, typs.int);
       return [new ast.IndexAccess(e1, index, t1), t1.typ];
     }
+
     else if(node instanceof ast.Deref) {
       var [e1, t1] = getTyp(node.e1, env);
       if(!(t1 instanceof ast.TypPtr)) {
-        throw new errors.CJSTypeError('Must dereference pointer, not ' + t1.toString());
+        throw new errors.CJSTypeError(`${t1.toString()} is not a pointer type, so it cannot be dereferenced.`, node.codeIndex());
       }
       return [new ast.Deref(e1, t1), t1.typ];
     }
+
     // Others
     else if(node instanceof ast.Lit) {
       return [node, node.typ];
     }
+
     else if(node instanceof ast.ObjField) {
       var [typ, _] = getTyp(node.typ, env);
       if(node.init) {
         var [init, tinit] = getTyp(node.init, env);
-        verifyTyps(typ, tinit);
         return [new ast.ObjField(node.name, node.visibility, typ, init), typs.void];
       }
       return [new ast.ObjField(node.name, node.visibility, typ, node.init), typs.void];
-
     }
+
     else if(node instanceof ast.Typedef) {
       if(node.typ instanceof ast.TypName) {
         var [typ, _] = getTyp(node.typ, env);
@@ -141,38 +184,42 @@ function typecheck(tree) {
       }
       return [new ast.Typedef(node.name, typ), typs.void];
     }
+
     else if(node instanceof ast.Decl) {
       var [typ, _] = getTyp(node.typ, env);
       env[node.name] = typ;
       if(node.init) {
         var [init, initTyp] = getTyp(node.init, env);
-        verifyTyps(initTyp, typ);
         return [new ast.Decl(typ, node.name, init), typs.void];
       }
       return [new ast.Decl(typ, node.name, node.init), typs.void];
     }
+
     else if(node instanceof ast.Uop) {
       var [e1, t1] = getTyp(node.e1, env);
       switch(node.op) {
         case '&':
+        case 'new':
           return [new ast.Uop(node.op, e1), new ast.TypPtr(t1)];
         default:
           return [new ast.Uop(node.op, e1), t1];
       }
     }
+
     else if(node instanceof ast.Bop) {
       var [e1, t1] = getTyp(node.e1, env), [e2, t2] = getTyp(node.e2, env);
-      verifyTyps(t1, t2);
       return [new ast.Bop(node.op, e1, e2), t1];
     }
+
     else if(node instanceof ast.Ternary) {
       var [cond, tcond] = getTyp(node.cond, env), [e1, t1] = getTyp(node.e1, env), [e2, t2] = getTyp(node.e2, env);
-      verifyTyps(t1, t2);
       return [new ast.Ternary(cond, e1, e2), t1];
     }
+
     else if(node instanceof ast.Nop) {
       return [node, typs.void];
     }
+
     else if(node instanceof ast.Fn) {
       var [ret, _] = getTyp(node.ret, env);
       var params = node.params.map((p) => {
@@ -195,39 +242,28 @@ function typecheck(tree) {
       var [body, _] = getTyp(node.body, newEnv);
       return [new ast.Fn(ret, node.name, params, body, frame, node.position), typ];
     }
+
     else if(node instanceof ast.Call) {
       var [fn, tfn] = getTyp(node.fn, env);
       var args = node.args.map((a, i) => {
         var [arg, targ] = getTyp(a, env);
-        verifyTyps(targ, tfn.params[i]);
         return arg;
       });
       return [new ast.Call(fn, args, node.position), tfn.ret];
     }
-    // else if(node instanceof ast.Construct) {
-    //   var [addr, taddr] = getTyp(node.addr, env);
-    //   var options = taddr.typ.constructors;
-    //   var args = [], argTyps = [];
-    //   for(var a of node.args) {
-    //     var [arg, targ] = getTyp(a, env);
-    //     args.push(arg);
-    //     argTyps.push(targ);
-    //   }
-    //   function isViableCandidate(args, cons) {
-    //     if(len(args))
-    //   }
-    //   return [new ast.Construct(addr, args), typs.void];
-    // }
+    
     else if(node instanceof ast.Return) {
       // TODO(alex): Figure out how to figure out what t1 needs to be
       var [e1, t1] = getTyp(node.e1, env);
       return [new ast.Return(e1), typs.void];
     }
+
     else if(node instanceof ast.Loop) {
       var [cond, tcond] = getTyp(node.cond, env);
       var [body, tbody] = getTyp(node.body, env);
       return [new ast.Loop(cond, body), typs.void];
     }
+
     else if(node instanceof ast.If) {
       var [cond, tcond] = getTyp(node.cond, env);
       var [body, _] = getTyp(node.body, env);
@@ -237,6 +273,7 @@ function typecheck(tree) {
       }
       return [new ast.If(cond, body, node.orelse), typs.void];
     }
+
     else if(node instanceof ast.Seq) {
       var elems = node.elems.map((e) => {
         var [elem, _] = getTyp(e, env);
@@ -244,16 +281,19 @@ function typecheck(tree) {
       });
       return [new ast.Seq(elems), typs.void];
     }
+
     else if(node instanceof ast.Scope) {
       var newEnv = Object.assign({}, env);
       var [body, _] = getTyp(node.body, newEnv);
       return [new ast.Scope(body), typs.void];
     }
+
     else if(node instanceof ast.Steppoint) {
       var [body, tbody] = getTyp(node.body, env);
       return [new ast.Steppoint(node.position, body), tbody];
     }
-    throw Error('Unimplemented type: ' + node.constructor.name);
+
+    throw errors.CJSUnimplementedError(`Unimplemented type to typecheck: ${node.constructor.name}`);
   }
 
   var builtinEnv = {

@@ -4,12 +4,12 @@ var ast = require('./ast');
 var parser = require('./parser');
 var runtime = require('./runtime');
 var typechecker = require('./typechecker');
+var errors = require('./errors');
 var pp = require('./preprocesser');
 
-function compile(preprocessedAst) {
+function compile(typecheckedAst) {
   var fns = [];
   var steppoints = [];
-  var typecheckedAst = typechecker.typecheck(preprocessedAst);
 
   function cmpl(node) {
     if(node instanceof ast.TypPtr) {
@@ -117,19 +117,13 @@ function compile(preprocessedAst) {
   }
 }
 
-// var lit1 = new ast.Lit(new ast.TypBase('int'), 1)
-//
-// console.log(
-//   compile(new ast.Fn(new ast.TypBase('int'), 'main', [], new ast.Scope(new ast.Seq([]))))
-// )
-
 module.exports = {
   compile: (code, options) => {
     var parsedAst = parser.parseFile(code);
     var preprocessedAst = pp.preprocess(parsedAst);
-    var compiledAst = compile(preprocessedAst);
+    var typecheckedAst = typechecker.typecheck(preprocessedAst);
+    var compiledAst = compile(typecheckedAst);
     return new runtime.Program(compiledAst, options || {});
   },
   ast: ast,
-  initMemory: runtime.initMemory,
 };

@@ -5,22 +5,59 @@ var text = require('bennu').text;
 var lang = require('bennu').lang;
 var nu = require('nu-stream').stream;
 var ast = require('./ast');
+var errors = require('./errors');
 
 var comment_singleline = parse.sequence(
   text.string('//'),
   parse.manyTill(text.anyChar, parse.either(text.character('\n'), parse.eof))
-)
+);
+
 var comment_multiline = parse.sequence(
   text.string('/*'),
   parse.manyTill(text.anyChar, text.string('*/')),
-  parse.expected('Expected end comment "*/"', text.string('*/'))
+  text.string('*/')
 );
+
 var comment = parse.either(
   parse.attempt(comment_singleline),
   comment_multiline
 );
 
 var spacers = parse.either(text.space, comment);
+
+var manyWithErrorRecovery = (parser, recovery) => {
+  var iter = (state) => {
+    var success = (ok, _state) => {
+      if(state.eq(_state)) {
+        return parse.fail(parse.ParserError("Parser succeeded but no input was consumed."))
+      }
+      return parse.bind(iter(state), (rest) => parse.always([ok, ...rest]));
+    }
+    
+    var failure = (msg, state) => {
+      console.log("Failure")
+      return parse.parseState(recovery, state,
+        (_, _state) => {
+          if(state.eq(_state)) {
+            return parse.fail(parse.ParserError("Parser succeeded but no input was consumed."))
+          }
+          console.log("Recovery failure as well. State:", state)
+          return parse.next(
+            parse.either(parse.fail(msg), iter(state)),
+            parse.fail(msg)
+          );
+        },
+        (_, state) => {
+          return parse.bind(parse.setParserState(state), (_) => {
+            return parse.always([]);
+          });
+        })
+    }
+    return parse.parseState(parser, state, success, failure);
+  }
+  return parse.bind(parse.getParserState, iter);
+};
+
 var ws = (p) => lang.between(parse.many(spacers), parse.many(spacers), p);
 
 var bind_list = (...args) => {
@@ -36,8 +73,7 @@ var nu_stream_as_string = (p) => parse.bind(p,
     (h, acc) => h + acc,
     ps)));
 
-var consume_all = (p) => parse.expected('Not end of file', lang.then(p, parse.eof));
-
+var consume_all = (p) => lang.then(p, parse.eof);
 
 var step_point = (p) => {
   return bind_list(
@@ -45,7 +81,7 @@ var step_point = (p) => {
     (start, result, end) => new ast.Steppoint({start: start.index, end: end.index}, result))
   };
 
-var semi = parse.expected('semicolon', text.character(';'))
+var semi = text.character(';');
 
 var letter_or_under = parse.either(text.letter, text.character('_'))
 var ident = ws(parse.bind(
@@ -59,16 +95,18 @@ var typ = parse.bind(ident, (t) => parse.always(new ast.TypName(t)));
 
 var var_name = ident;
 
-var integer_lit = parse.bind(
+var integer_lit = bind_list(
+  parse.getPosition,
   nu_stream_as_string(parse.many1(text.digit)),
-  (n) => parse.always(new ast.Lit(new ast.TypBase('int'), Number(n))));
+  (pos, n) => new ast.Lit(new ast.TypBase('int'), Number(n), pos.index));
 
-var string_lit = parse.bind(
+var string_lit = bind_list(
+  parse.getPosition,
   lang.between(
     text.character('"'),
     text.character('"'),
     nu_stream_as_string(parse.many(text.noneOf('"')))),
-  (str) => parse.always(new ast.Lit(new ast.TypPtr(new ast.TypBase('char')), str)));
+  (pos, str) => new ast.Lit(new ast.TypPtr(new ast.TypBase('char')), str, pos.index));
 
 var literal = parse.choice(
   integer_lit,
@@ -106,7 +144,7 @@ var arg_list = parse.late(() => lang.between(
 var expr = parse.late(() => group18);
 var group0 = ws(parse.choice(
     literal,
-    parse.bind(ident, (n) => parse.always(new ast.Var(n))),
+    bind_list(ws(parse.always()), parse.getPosition, ident, (_, pos, i) => new ast.Var(i, undefined, pos.index)),
     lang.between(text.character('('),
                  text.character(')'),
                  ws(expr))));
@@ -122,7 +160,7 @@ var group2 = parse.late(() => parse.choice(
       group1,
       parse.many(ws(parse.choice(
         parse.bind(text.trie(['++', '--']), (op) => parse.always((e) =>
-          new ast.Uop(op, e))),
+          new ast.Uop(op, e, e.codeIndex()))),
         bind_list(
           text.trie(['.', '->']),
           ws(ident),
@@ -147,20 +185,22 @@ var group2 = parse.late(() => parse.choice(
     })));
 // TODO(alex): Add casting
 var group3 = parse.late(() => bind_list(
-  parse.many(ws(text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&', '*', 'delete']))),
+  parse.many(ws(bind_list(parse.getPosition, text.trie(['sizeof', '++', '--', '~', '!', '-', '+', '&', '*', 'delete']), (pos, op) => [pos, op]))),
   parse.choice(
     bind_list(
       parse.next(word('new'), typ),
       parse.optional(undefined, arg_list),
+      // TODO(alex): Call constructor with args
       (t, args) => new ast.Uop('new', t)),
     group2),
   (ops, e) => {
     return nu.foldr(
-      (acc, op) => {
+      (acc, pref) => {
+        var [pos, op] = pref;
         if(op == '*') {
-          return new ast.Deref(acc);
+          return new ast.Deref(acc, undefined, pos);
         }
-        return new ast.Uop(op, acc);
+        return new ast.Uop(op, acc, pos);
       },
       e,
       ops)
@@ -188,9 +228,11 @@ var declarator = (baseParser) => bind_list(
   parse.many(lang.between(
     ws(text.character('[')),
     ws(text.character(']')),
-    expr)),
+    parse.optional(undefined, expr))),
   (base, ptrs, name, arrs) => new ast.Decl(nu.foldl(
-    (acc, h) => new ast.TypArr(acc, h),
+    (acc, h) => {
+      return new ast.TypArr(acc, h);
+    },
     nu.foldl(
       (acc, _) => new ast.TypPtr(acc),
       base,
@@ -201,13 +243,12 @@ var var_decls = parse.bind(typ,
   (t) => parse.bind(parse.eager(lang.sepBy1(ws(text.character(',')),
     parse.bind(declarator(parse.always(t)),
       (decl) => parse.optional(decl, parse.either(
+        // TODO(alex): What is this for? It probably needs a rollback and ast.Var call needs a position.
         parse.bind(arg_list,
-          (args) => {
-            return parse.always(new ast.Seq([
+          (args) => parse.always(new ast.Seq([
               decl,
               new ast.Call(new ast.MemberAccess(new ast.Var(decl.name), t.name), args)
-            ]));
-          }),
+            ]))),
         // Group 17 used because ',' is a valid operator at group 18
         parse.bind(parse.next(ws(text.character('=')), group17),
           (init) => {
@@ -284,7 +325,12 @@ var stmt = parse.either(parse.attempt(comment), ws(parse.choice(
   step_point(parse.next(semi, parse.always(new ast.Nop()))))
 ));
 
+var recover = (p1, p2) => {
+  return parse.either(p1, p2);
+}
+
 var stmts = parse.eager(parse.many(ws(stmt)));
+// var stmts = manyWithErrorRecovery(ws(stmt), parse.manyTill(text.anyChar, text.character(';')));
 
 var params = lang.between(
   text.character('('),
@@ -366,10 +412,25 @@ var file = parse.bind(
         fn_def)))),
     (body) => parse.always(new ast.Seq(body)));
 
-var parseFile = (s) => parse.run(consume_all(file), s)
-var parseFn = (s) => parse.run(consume_all(fn_def), s)
-var parseExpr = (s) => parse.run(consume_all(expr), s)
-var parseStmt = (s) => parse.run(consume_all(stmt), s)
+
+var CJSParse = (p) => {
+  return (s) => {
+    return parse.run(consume_all(p), s);
+    try {
+      return parse.run(consume_all(p), s);
+    }
+    catch(e) {
+      var m = errors.buildErrMsg(s, e.position.index);
+      var msg = `Line ${m.line}, column ${m.col}: Expected "${e.expected}", found "${e.found}"\n${m.location}`;
+      throw new errors.CJSSyntaxError(msg, e.position.index, e.expected, e.found)
+    }
+  }
+}
+
+var parseFile = CJSParse(file)
+var parseFn = CJSParse(fn_def)
+var parseExpr = CJSParse(expr)
+var parseStmt = CJSParse(stmt)
 
 module.exports = {
   parseFile: parseFile,

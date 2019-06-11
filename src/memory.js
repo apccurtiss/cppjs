@@ -71,13 +71,14 @@ function initMemory(loc, typ, initFunc) {
   }
 }
 
-function MemoryModel(builtins) {
+function Memory(builtins) {
   // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/DataView
-  // var buffer = new ArrayBuffer(1024);
+  // var STACK_SIZE = 2048;
+  // var buffer = new ArrayBuffer(STACK_SIZE);
   // var view = new DataView(buffer);
   // var esp = 0;
   // var ebp = 0;
-  //
+  
   // var loc = 4;
   // view.setInt8(loc, 10);
   // view.getInt8(loc);
@@ -177,7 +178,7 @@ function MemoryModel(builtins) {
         offset += getTypSize(field.typ);
       }
     }
-    throw Error("Internal error. Something has gone wrong.")
+    throw new errors.CJSInternalError("Node was not LValue");
   }
 
   this.valueOfLValue = function(node) {
@@ -192,7 +193,5 @@ function MemoryModel(builtins) {
 }
 
 module.exports = {
-  MemoryModel: MemoryModel,
-  getTypSize: getTypSize,
-  initMemory: initMemory,
+  Memory: Memory,
 }

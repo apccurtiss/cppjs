@@ -62,12 +62,13 @@ module.exports = {
 
   // LValues
 
-  Var: function(name, typ) {
+  Var: function(name, typ, codeIndex) {
     this.name = name;
     this.typ = typ;
+    this.codeIndex = () => codeIndex;
     this.asString = () => name;
 
-    this.apply = function(f){ return new module.exports.Var(this.name, this.typ ? f(this.typ) : this.typ); }
+    this.apply = function(f){ return new module.exports.Var(this.name, this.typ ? f(this.typ) : this.typ, this.codeIndex()); }
     this.walk = function(f){ f(this.typ); return this; };
   },
 
@@ -75,6 +76,7 @@ module.exports = {
     this.e1 = e1;
     this.field = field;
     this.e1typ = e1typ;
+    this.codeIndex = () => e1.codeIndex();
     this.asString = () => e1.asString() + '.' + field;
 
     this.apply = function(f){ return new module.exports.MemberAccess(f(this.e1), this.field, this.e1typ ? f(this.e1typ) : this.e1typ); }
@@ -85,6 +87,7 @@ module.exports = {
     this.e1 = e1;
     this.index = index;
     this.e1typ = e1typ;
+    this.codeIndex = () => e1.codeIndex();
     this.asString = () => e1.asString() + '[' + index.val + ']';
 
     this.apply = function(f){ return new module.exports.IndexAccess(f(this.e1), f(this.index), this.e1typ ? f(this.e1typ) : this.e1typ); }
@@ -98,12 +101,13 @@ module.exports = {
     };
   },
 
-  Deref: function(e1, e1typ) {
+  Deref: function(e1, e1typ, codeIndex) {
     this.e1 = e1;
     this.e1typ = e1typ;
+    this.codeIndex = () => codeIndex
     this.asString = () => '*' + this.e1.asString();
 
-    this.apply = function(f){ return new module.exports.Deref(f(this.e1), this.e1typ ? f(this.e1typ) : this.e1typ); }
+    this.apply = function(f){ return new module.exports.Deref(f(this.e1), this.e1typ ? f(this.e1typ) : this.e1typ, this.codeIndex()); }
     this.walk = function(f){
       f(this.e1);
       if(this.e1typ) {
@@ -115,11 +119,13 @@ module.exports = {
 
   // Expressions
 
-  Uop: function(op, e1) {
+  Uop: function(op, e1, codeIndex) {
     this.op = op;
     this.e1 = e1;
+    this.codeIndex = () => codeIndex;
+    this.asString = () => op + this.e1.asString();
 
-    this.apply = function(f){ return new module.exports.Uop(this.op, f(this.e1)); }
+    this.apply = function(f){ return new module.exports.Uop(this.op, f(this.e1), this.codeIndex()); }
     this.walk = function(f){ f(this.e1); return this; };
   },
 
@@ -127,6 +133,8 @@ module.exports = {
     this.op = op;
     this.e1 = e1;
     this.e2 = e2;
+    this.codeIndex = () => e1.codeIndex();
+    this.asString = () => this.e1.asString() + op + this.e2.asString();
 
     this.apply = function(f){ return new module.exports.Bop(this.op, f(this.e1), f(this.e2)); }
     this.walk = function(f){ f(this.e1); f(this.e2); return this; };
@@ -136,6 +144,8 @@ module.exports = {
     this.cond = cond;
     this.e1 = e1;
     this.e2 = e2;
+    this.codeIndex = () => cond.codeIndex();
+    this.asString = () => this.cond.asString() + "?" + this.e1.asString() + ":" + this.e2.asString();
 
     this.apply = function(f){ return new module.exports.Ternary(f(this.cond), f(this.e1), f(this.e2)); }
     this.walk = function(f){ f(this.cond); f(this.e1); f(this.e2); return this; };
@@ -146,9 +156,10 @@ module.exports = {
     this.walk = function(f){ return; };
   },
 
-  Lit: function(typ, val) {
+  Lit: function(typ, val, codeIndex) {
     this.typ = typ;
     this.val = val;
+    this.codeIndex = () => codeIndex;
     this.asString = () => val;
 
     this.apply = function(f){ return this; }
@@ -159,6 +170,8 @@ module.exports = {
     this.fn = fn;
     this.args = args;
     this.position = position;
+    this.codeIndex = () => fn.codeIndex();
+    this.asString = () => fn.asString() + "(" + ",".join(args.map((a) => a.asString())) + ")";
 
     this.apply = function(f){ return new module.exports.Call(f(fn), this.args.map(f), this.position); }
     this.walk = function(f){ f(fn); this.args.map(f); return this; };
@@ -170,8 +183,9 @@ module.exports = {
     this.typ = typ;
     this.name = name;
     this.init = init;
+    this.asString = () => typ.asString() + " " + name + init ? " = " + init.toString() : "";
 
-    this.apply = function(f){ return new module.exports.Decl(f(this.typ), this.name, this.init ? f(this.init) : this.init ); }
+    this.apply = function(f){ return new module.exports.Decl(f(this.typ), this.name, this.init ? f(this.init) : this.init); }
     this.walk = function(f){
       f(this.typ);
       if(this.init) {
@@ -261,7 +275,6 @@ module.exports = {
     this.apply = function(f){ return new module.exports.Steppoint(this.position, f(this.body)); }
     this.walk = function(f){ f(this.body); return this; }
   },
-
 
   ObjField: function(name, visibility, typ, init) {
     this.name = name;

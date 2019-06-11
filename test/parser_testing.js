@@ -3,10 +3,12 @@ var parser = require("../src/parser.js");
 var test = require("tape");
 
 test('Arithmatic expressions', function(t) {
-  t.plan(10);
+  t.plan(12);
 
   t.doesNotThrow(() => parser.parseExpr(`1`));
   t.doesNotThrow(() => parser.parseExpr(`a`));
+  t.doesNotThrow(() => parser.parseExpr(`a + b`));
+  t.doesNotThrow(() => parser.parseExpr(`- a`));
   t.doesNotThrow(() => parser.parseExpr(`+ a + b`));
   t.doesNotThrow(() => parser.parseExpr(`- a - - b`));
   t.doesNotThrow(() => parser.parseExpr(`- - - - + + + - - a`));

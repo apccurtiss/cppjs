@@ -11,7 +11,6 @@ function preprocess(node) {
   };
 
   function pp(node) {
-    // TODO(alex): Move frame calculation to typechecker
     if(node instanceof ast.Var) {
       if(node.name in defines) {
         return defines[node.name];

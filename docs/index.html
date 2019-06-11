@@ -13,7 +13,7 @@
         <!-- <a href="#"><img class="logo" src="static/images/logo.png"></img></a> -->
         <a href="#"><b class="logo">CPP.js</b></a>
         <ul class="nav-bar box horizontal">
-          <li><a href="#">About</a></li>
+          <li><a href="https://github.com/apccurtiss/cjs">Github</a></li>
           <li>
             <div class="dropdown">
               <span>Examples</span>
@@ -25,7 +25,7 @@
               </div>
             </div>
           </li>
-          <li><button id="login">Log In</button></li>
+          <!-- <li><button id="login">Log In</button></li> -->
         </ul>
       </header>
       <div class="function-bar">
@@ -74,52 +74,57 @@
           </li>
         </ul>
       </div>
-      <section class="box horizontal fill">
-        <div id="editor" class="fill"></div>
-        <div id="dashboard" class="hidden fill">
-          <div class="box vertical">
-            <div class="box horizontal fill">
-              <div class="widget-wrapper">
-                <div class="widget-label">
-                  Console
+      <section class="fill">
+        <div class="box horizontal">
+          <div id="alert" style="display: none;">
+              <span class="close-button" onclick="this.parentElement.style.display='none';">&times;</span>
+              <pre id="alert-content"></pre>
+          </div>
+          <div id="editor" class="fill"></div>
+          <div id="dashboard" class="hidden fill">
+            <div class="box vertical">
+              <div class="box horizontal fill">
+                <div class="widget-wrapper">
+                  <div class="widget-label">
+                    Console
+                  </div>
+                  <div class="widget-contents">
+                    <div id="stdout" class="console">
+                    </div>
+                  </div>
                 </div>
-                <div class="widget-contents">
-                  <div id="stdout" class="console">
-                    <span>user@c-learn:~$ ./program</span><br/>
+                <div class="widget-wrapper">
+                  <div class="widget-label">
+                    Call Stack
+                  </div>
+                  <div class="widget-contents">
+                    <ul id="stack-frames">
+                      <li class="stack-frame active template">
+                        <span class="name"></span>
+                        <ul class="stack-frame-vars">
+                        </ul>
+                      </li>
+                    </ul>
                   </div>
                 </div>
               </div>
-              <div class="widget-wrapper">
+              <div class="widget-wrapper double">
                 <div class="widget-label">
-                  Call Stack
+                  Heap
                 </div>
                 <div class="widget-contents">
-                  <ul id="stack-frames">
-                    <li class="stack-frame active template">
-                      <span class="name"></span>
-                      <ul class="stack-frame-vars">
-                      </ul>
-                    </li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            <div class="widget-wrapper double">
-              <div class="widget-label">
-                Heap
-              </div>
-              <div class="widget-contents">
-                <div id="heap-canvas">
-                  <div class="heap-options">
-                    <div class="heap-option">
-                      <input type="checkbox" id="show-pointers-option"
-                        onclick="togglePointers(this.checked)"></input>
-                      <span>Show pointers</span>
-                    </div>
-                    <div class="heap-option">
-                      <input type="checkbox" id="draw-collapsed-option"
-                        onclick="toggleCollapsed(this.checked)"></input>
-                      <span>Collapse new nodes</span>
+                  <div id="heap-canvas">
+                    <div class="heap-options">
+                      <div class="heap-option">
+                        <input type="checkbox" id="show-pointers-option"
+                          onclick="togglePointers(this.checked)"></input>
+                        <span>Show pointers</span>
+                      </div>
+                      <div class="heap-option">
+                        <input type="checkbox" id="draw-collapsed-option"
+                          onclick="toggleCollapsed(this.checked)"></input>
+                        <span>Collapse new nodes</span>
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -347,10 +347,31 @@ function edit() {
   clearState();
 }
 
+function displayError(err) {
+  var alert = document.getElementById("alert");
+  var contents = document.getElementById("alert-content");
+  alert.style.display = null;
+  contents.innerHTML = err.message;
+  console.error(err);
+}
+
+function hideError() {
+  var alert = document.getElementById("alert");
+  alert.style.display = "none";
+}
+
 function compile() {
+  hideError();
+  try {
+    state.program = compiler.compile(editor.getValue(), options);
+  }
+  catch(e) {
+    displayError(e);
+    return;
+  }
   changeState('paused');
+  document.getElementById('stdout').innerHTML = "<span>user@c-learn:~$ ./program</span><br/>";
   setTimeout(() => editor.resize(), 800);
-  state.program = compiler.compile(editor.getValue(), options);
   for(steppoint of state.program.steppoints) {
     var start = editor.session.doc.indexToPosition(steppoint.start, 0);
     var end = editor.session.doc.indexToPosition(steppoint.end, 0);
